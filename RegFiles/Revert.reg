@@ -1,0 +1,235 @@
+Windows Registry Editor Version 5.00
+
+; Enable "Give access to"
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked]
+"{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}"=-
+
+; Enable "Open in Terminal"
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked]
+"{9f156763-7844-4dc4-b2b1-901f640f5155}"=-
+
+; Enable "Include in library" in context menu
+[HKEY_CLASSES_ROOT\Folder\ShellEx\ContextMenuHandlers\Library Location]
+@="{3dad6c5d-2167-4cae-9914-f99e41c12cfa}"
+
+; Enable "Send to"
+[HKEY_CLASSES_ROOT\AllFilesystemObjects\shellex\ContextMenuHandlers\SendTo]
+@="{7BA4C740-9E81-11CF-99D3-00AA004AE837}"
+[HKEY_CLASSES_ROOT\UserLibraryFolder\shellex\ContextMenuHandlers\SendTo]
+@="{7BA4C740-9E81-11CF-99D3-00AA004AE837}"
+
+; Enable "Share"
+[HKEY_CLASSES_ROOT\AllFilesystemObjects\shellex\ContextMenuHandlers\ModernSharing]
+@="{e2bf9676-5f8f-435c-97eb-11607a5bedf7}"
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked]
+"{e2bf9676-5f8f-435c-97eb-11607a5bedf7}"=-
+
+; Remove "Open PowerShell window here as administrator"
+[-HKEY_CLASSES_ROOT\Directory\Background\shell\PowerShellAsAdmin]
+[-HKEY_CLASSES_ROOT\Directory\shell\PowerShellAsAdmin]
+[-HKEY_CLASSES_ROOT\Drive\shell\PowerShellAsAdmin]
+[-HKEY_CLASSES_ROOT\LibraryFolder\Background\shell\PowerShellAsAdmin]
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System]
+"EnableLinkedConnections"=-
+
+; Enable Sync Provider Notifications in File Explorer
+[HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"ShowSyncProviderNotifications"=dword:00000001
+
+; Enable Facts, Tips, and Tricks on Lock Screen
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager]
+"RotatingLockScreenOverlayEnabled"=dword:00000001
+"SubscribedContent-338387Enabled"=dword:00000001
+
+; Enable Suggested Content in Settings
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager]
+"SubscribedContent-338393Enabled"=dword:00000001
+"SubscribedContent-353694Enabled"=dword:00000001
+"SubscribedContent-353696Enabled"=dword:00000001
+
+; Enable Tips and Suggestions Notifications
+[HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager]
+"SubscribedContent-338389Enabled"=dword:00000001
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\CloudContent]
+"DisableSoftLanding"=-
+
+; Enable Let's finish setting up your device
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement]
+"ScoobeSystemSettingEnabled"=dword:00000001
+
+; Enable Windows Welcome Experience
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager]
+"SubscribedContent-310093Enabled"=dword:00000001
+
+; Enable Advertising ID for Personalized Ads in Apps
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo]
+"Enabled"=dword:00000001
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo]
+"DisabledByGroupPolicy"=-
+
+; Enable Tailored Experiences
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Privacy]
+"TailoredExperiencesWithDiagnosticDataEnabled"=dword:00000001
+[HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\CloudContent]
+"DisableTailoredExperiencesWithDiagnosticData"=-
+
+; Enable Recommended Tips, Shortcuts, New Apps, and more on Start Menu
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"Start_IrisRecommendations"=dword:00000001
+
+; Enable Notification Badging for Microsoft Accounts on Start menu
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"Start_AccountNotifications"=dword:00000001
+
+; Enable Windows 11 Promotional Apps
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager]
+"ContentDeliveryAllowed"=dword:00000001
+"FeatureManagementEnabled"=dword:00000000
+"OemPreInstalledAppsEnabled"=dword:00000001
+"PreInstalledAppsEnabled"=dword:00000001
+"PreInstalledAppsEverEnabled"=dword:00000001
+"SilentInstalledAppsEnabled"=dword:00000001
+"SoftLandingEnabled"=dword:00000001
+"SubscribedContentEnabled"=dword:00000001
+"SubscribedContent-338388Enabled"=dword:00000001
+"SystemPaneSuggestionsEnabled"=dword:00000001
+
+; Enable Show Notifications in Settings app
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\SystemSettings\AccountNotifications]
+"EnableAccountNotifications"=dword:00000001
+
+; Enable Online Speech Recognition
+[HKEY_CURRENT_USER\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy]
+"HasAccepted"=dword:00000001
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\InputPersonalization]
+"AllowInputPersonalization"=-
+
+; Enable Inking & Typing Personalisation
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\CPSS\Store\InkingAndTypingPersonalization]
+"Value"=dword:00000001
+[HKEY_CURRENT_USER\Software\Microsoft\Personalization\Settings]
+"AcceptedPrivacyPolicy"=dword:00000001
+[HKEY_CURRENT_USER\Software\Microsoft\InputPersonalization]
+"RestrictImplicitInkCollection"=dword:00000000
+"RestrictImplicitTextCollection"=dword:00000000
+[HKEY_CURRENT_USER\Software\Microsoft\InputPersonalization\TrainedDataStore]
+"HarvestContacts"=dword:00000001
+
+; Enable Improve Inking and Typing
+[HKEY_CURRENT_USER\Software\Microsoft\Input\TIPC]
+"Enabled"=dword:00000001
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\TextInput]
+"AllowLinguisticDataCollection"=-
+
+; Enable Diagnostic Data Viewer
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack\EventTranscriptKey]
+"EnableEventTranscript"=dword:00000001
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DataCollection]
+"DisableDiagnosticDataViewer"=-
+
+; Set Feedback Frequency to Automatic
+[HKEY_CURRENT_USER\Software\Microsoft\Siuf\Rules]
+"NumberOfSIUFInPeriod"=-
+"PeriodInNanoSeconds"=-
+
+; Disable push to install
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\PushToInstall]
+"DisablePushToInstal"=-
+
+; Enable Copilot button on taskbar
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"ShowCopilotButton"=dword:00000001
+
+; Enable Copilot service for current user
+[HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\WindowsCopilot]
+"TurnOffWindowsCopilot"=-
+
+; Enable Copilot service for all users
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot]
+"TurnOffWindowsCopilot"=-
+
+; Advanced Options \ Receive updates for other Microsoft products
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings]
+"AllowMUUpdateService"=dword:00000001
+
+; Advanced Options \ Get me up to date
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings]
+"IsExpedited"=dword:00000001
+
+; Advanced Options \ Download updates over metered connections
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings]
+"AllowAutoWindowsUpdateDownloadOverMeteredNetwork"=dword:00000001
+
+; Advanced Options \ Notify me when a restart is required to finish updating
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings]
+"RestartNotificationsAllowed2"=dword:00000001
+
+; Advanced Options \ Active Hours
+[HKEY_LOCAL_MACHINE\Software\Microsoft\WindowsUpdate\UX\Settings]
+"SmartActiveHoursState"=dword:00000001
+"ActiveHoursStart"=dword:00000008
+"ActiveHoursEnd"=dword:00000001
+"UserChoiceActiveHoursStart"=dword:00000008
+"UserChoiceActiveHoursEnd"=dword:00000001
+"IsContinuousInnovationOptedIn"=dword:00000001
+
+; Delivery Optimisation
+[HKEY_USERS\S-1-5-20\Software\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Settings]
+"DownloadMode"=dword:00000001
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization]
+"DODownloadMode"=-
+
+; Providing Drivers with Windows Update
+[HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\WindowsUpdate]
+"ExcludeWUDriversInQualityUpdate"=-
+
+; System \ Advanced System Settings \ Hardware \ Device Installation Settings
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Device Metadata]
+"PreventDeviceMetadataFromNetwork"=dword:00000000
+
+; Folder Options \ Show recently used files
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer]
+"ShowRecent"=dword:00000001
+
+; Folder Options \ Show frequently used folders
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer]
+"ShowFrequent"=dword:00000001
+
+; Folder Options \ Show files from Office.com
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer]
+"ShowCloudFilesInQuickAccess"=dword:00000001
+
+; Personalisation \ Start \ Layout (Default)
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"Start_Layout"=dword:0000000
+
+; Personalisation \ Start \ Show recently added apps
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Start]
+"ShowRecentList"=dword:00000001
+
+; Personalisation \ Start \ Show the most used apps
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Start]
+"ShowFrequentList"=dword:00000001
+
+; Personalisation \ Start \ Show recently opened items in Start, Jump Lists and File Explorer
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"Start_TrackDocs"=dword:00000001
+
+; Personalisation \ Start \ Folders \ Visible
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Start]
+"VisiblePlaces"=hex(3):
+
+; Disable "Sticky Keys"
+[HKEY_CURRENT_USER\Control Panel\Accessibility\StickyKeys]
+"Flags"="510"
+
+; Remove "End task" to taskbar
+[-HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings]
+
+; Enable Bitlocker automatic device encryption
+[HKEY_LOCAL_MACHINE\System\ControlSet001\Control\BitLocker]
+"PreventDeviceEncryption"=-
+
+; Enable Spotlight on Desktop
+[HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\CloudContent]
+"DisableSpotlightCollectionOnDesktop"=-

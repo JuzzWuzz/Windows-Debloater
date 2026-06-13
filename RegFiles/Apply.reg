@@ -1,0 +1,255 @@
+Windows Registry Editor Version 5.00
+
+; Disable "Give access to"
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked]
+"{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}"="Give access to"
+
+; Disable "Open in Terminal"
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked]
+"{9f156763-7844-4dc4-b2b1-901f640f5155}"="Open in Terminal"
+
+; Disable "Include in library" in context menu
+[-HKEY_CLASSES_ROOT\Folder\ShellEx\ContextMenuHandlers\Library Location]
+
+; Disable "Send to"
+[-HKEY_CLASSES_ROOT\AllFilesystemObjects\shellex\ContextMenuHandlers\SendTo]
+[-HKEY_CLASSES_ROOT\UserLibraryFolder\shellex\ContextMenuHandlers\SendTo]
+
+; Disable "Share"
+[-HKEY_CLASSES_ROOT\AllFilesystemObjects\shellex\ContextMenuHandlers\ModernSharing]
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked]
+"{e2bf9676-5f8f-435c-97eb-11607a5bedf7}"="Share"
+
+; Add "Open PowerShell window here as administrator"
+[HKEY_CLASSES_ROOT\Directory\Background\shell\PowerShellAsAdmin]
+@="Open PowerShell window here as administrator"
+"Extended"=""
+"HasLUAShield"=""
+"Icon"="powershell.exe"
+[HKEY_CLASSES_ROOT\Directory\Background\shell\PowerShellAsAdmin\command]
+@="cmd /c reg add hkcu\\software\\_dir /v p /d \"%v \" /f & start powershell -WindowS H -noP -c Start-Process -v RunAs powershell.exe '-noL -noE -c cd -literalP ((gp hkcu:\\software\\_dir).p).TrimEnd(); ri hkcu:\\software\\_dir'"
+[HKEY_CLASSES_ROOT\Directory\shell\PowerShellAsAdmin]
+@="Open PowerShell window here as administrator"
+"Extended"=""
+"HasLUAShield"=""
+"Icon"="powershell.exe"
+[HKEY_CLASSES_ROOT\Directory\shell\PowerShellAsAdmin\command]
+@="cmd /c reg add hkcu\\software\\_dir /v p /d \"%v \" /f & start powershell -WindowS H -noP -c Start-Process -v RunAs powershell.exe '-noL -noE -c cd -literalP ((gp hkcu:\\software\\_dir).p).TrimEnd(); ri hkcu:\\software\\_dir'"
+[HKEY_CLASSES_ROOT\Drive\shell\PowerShellAsAdmin]
+@="Open PowerShell window here as administrator"
+"Extended"=""
+"HasLUAShield"=""
+"Icon"="powershell.exe"
+[HKEY_CLASSES_ROOT\Drive\shell\PowerShellAsAdmin\command]
+@="cmd /c reg add hkcu\\software\\_dir /v p /d \"%v \" /f & start powershell -WindowS H -noP -c Start-Process -v RunAs powershell.exe '-noL -noE -c cd -literalP ((gp hkcu:\\software\\_dir).p).TrimEnd(); ri hkcu:\\software\\_dir'"
+[-HKEY_CLASSES_ROOT\LibraryFolder\Background\shell\PowerShellAsAdmin]
+; To allow mapped drives to be available in elevated PowerShell
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System]
+"EnableLinkedConnections"=dword:00000001
+
+; Disable Sync Provider Notifications in File Explorer
+[HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"ShowSyncProviderNotifications"=dword:00000000
+
+; Disable Facts, Tips, and Tricks on Lock Screen
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager]
+"RotatingLockScreenOverlayEnabled"=dword:00000000
+"SubscribedContent-338387Enabled"=dword:00000000
+
+; Disable Suggested Content in Settings
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager]
+"SubscribedContent-338393Enabled"=dword:00000000
+"SubscribedContent-353694Enabled"=dword:00000000
+"SubscribedContent-353696Enabled"=dword:00000000
+
+; Disable Tips and Suggestions Notifications
+[HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager]
+"SubscribedContent-338389Enabled"=dword:00000000
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\CloudContent]
+"DisableSoftLanding"=dword:00000001
+
+; Disable Let's finish setting up your device
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\UserProfileEngagement]
+"ScoobeSystemSettingEnabled"=dword:00000000
+
+; Disable Windows Welcome Experience
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager]
+"SubscribedContent-310093Enabled"=dword:00000000
+
+; Disable Advertising ID for Personalized Ads in Apps
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo]
+"Enabled"=dword:00000000
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo]
+"DisabledByGroupPolicy"=dword:00000001
+
+; Disable Tailored Experiences
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Privacy]
+"TailoredExperiencesWithDiagnosticDataEnabled"=dword:00000000
+[HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\CloudContent]
+"DisableTailoredExperiencesWithDiagnosticData"=dword:00000001
+
+; Disable Recommended Tips, Shortcuts, New Apps, and more on Start Menu
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"Start_IrisRecommendations"=dword:00000000
+
+; Disable Notification Badging for Microsoft Accounts on Start menu
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"Start_AccountNotifications"=dword:00000000
+
+; Disable Windows 11 Promotional Apps
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager]
+"ContentDeliveryAllowed"=dword:00000000
+"FeatureManagementEnabled"=dword:00000000
+"OemPreInstalledAppsEnabled"=dword:00000000
+"PreInstalledAppsEnabled"=dword:00000000
+"PreInstalledAppsEverEnabled"=dword:00000000
+"SilentInstalledAppsEnabled"=dword:00000000
+"SoftLandingEnabled"=dword:00000000
+"SubscribedContentEnabled"=dword:00000000
+"SubscribedContent-338388Enabled"=dword:00000000
+"SystemPaneSuggestionsEnabled"=dword:00000000
+[-HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscriptions]
+[-HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SuggestedApps]
+
+; Disable Show Notifications in Settings app
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\SystemSettings\AccountNotifications]
+"EnableAccountNotifications"=dword:00000000
+
+; Disabling Online Speech Recognition
+[HKEY_CURRENT_USER\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy]
+"HasAccepted"=dword:00000000
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\InputPersonalization]
+"AllowInputPersonalization"=dword:00000000
+
+; Disable Inking & Typing Personalisation
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\CPSS\Store\InkingAndTypingPersonalization]
+"Value"=dword:00000000
+[HKEY_CURRENT_USER\Software\Microsoft\Personalization\Settings]
+"AcceptedPrivacyPolicy"=dword:00000000
+[HKEY_CURRENT_USER\Software\Microsoft\InputPersonalization]
+"RestrictImplicitInkCollection"=dword:00000001
+"RestrictImplicitTextCollection"=dword:00000001
+[HKEY_CURRENT_USER\Software\Microsoft\InputPersonalization\TrainedDataStore]
+"HarvestContacts"=dword:00000000
+
+; Disable Improve Inking and Typing
+[HKEY_CURRENT_USER\Software\Microsoft\Input\TIPC]
+"Enabled"=dword:00000000
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\TextInput]
+"AllowLinguisticDataCollection"=dword:00000000
+
+; Disable Diagnostic Data Viewer
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Diagnostics\DiagTrack\EventTranscriptKey]
+"EnableEventTranscript"=dword:00000000
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DataCollection]
+"DisableDiagnosticDataViewer"=dword:00000001
+
+; Set Feedback Frequency to Never
+[HKEY_CURRENT_USER\Software\Microsoft\Siuf\Rules]
+"NumberOfSIUFInPeriod"=dword:00000000
+"PeriodInNanoSeconds"=-
+
+; Disable push to install
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\PushToInstall]
+"DisablePushToInstal"=dword:00000001
+
+; Disable Copilot button on taskbar
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"ShowCopilotButton"=dword:00000000
+
+; Disable Copilot service for current user
+[HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\WindowsCopilot]
+"TurnOffWindowsCopilot"=dword:00000001
+
+; Disable Copilot service for all users
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot]
+"TurnOffWindowsCopilot"=dword:00000001
+
+; Advanced Options \ Receive updates for other Microsoft products
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings]
+"AllowMUUpdateService"=dword:00000000
+
+; Advanced Options \ Get me up to date
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings]
+"IsExpedited"=dword:00000000
+
+; Advanced Options \ Download updates over metered connections
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings]
+"AllowAutoWindowsUpdateDownloadOverMeteredNetwork"=dword:00000000
+
+; Advanced Options \ Notify me when a restart is required to finish updating
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings]
+"RestartNotificationsAllowed2"=dword:00000001
+
+; Advanced Options \ Active Hours
+[HKEY_LOCAL_MACHINE\Software\Microsoft\WindowsUpdate\UX\Settings]
+"SmartActiveHoursState"=dword:00000000
+"ActiveHoursStart"=dword:00000007
+"ActiveHoursEnd"=dword:00000001
+"UserChoiceActiveHoursStart"=dword:00000007
+"UserChoiceActiveHoursEnd"=dword:00000001
+"IsContinuousInnovationOptedIn"=dword:00000001
+
+; Delivery Optimisation
+[HKEY_USERS\S-1-5-20\Software\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Settings]
+"DownloadMode"=dword:00000000
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization]
+"DODownloadMode"=dword:00000000
+
+; Providing Drivers with Windows Update
+[HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\WindowsUpdate]
+"ExcludeWUDriversInQualityUpdate"=dword:00000001
+
+; System \ Advanced System Settings \ Hardware \ Device Installation Settings
+[HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Device Metadata]
+"PreventDeviceMetadataFromNetwork"=dword:00000001
+
+; Folder Options \ Show recently used files
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer]
+"ShowRecent"=dword:00000000
+
+; Folder Options \ Show frequently used folders
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer]
+"ShowFrequent"=dword:00000000
+
+; Folder Options \ Show files from Office.com
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer]
+"ShowCloudFilesInQuickAccess"=dword:00000000
+
+; Personalisation \ Start \ Layout (More pins)
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"Start_Layout"=dword:00000001
+
+; Personalisation \ Start \ Show recently added apps
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Start]
+"ShowRecentList"=dword:00000000
+
+; Personalisation \ Start \ Show the most used apps
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Start]
+"ShowFrequentList"=dword:00000000
+
+; Personalisation \ Start \ Show recently opened items in Start, Jump Lists and File Explorer
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"Start_TrackDocs"=dword:00000000
+
+; Personalisation \ Start \ Folders \ Visible
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Start]
+"VisiblePlaces"=hex(3):86,08,73,52,AA,51,43,42,9F,7B,27,76,58,46,59,D4,2F,\
+B3,67,E3,DE,89,55,43,BF,CE,61,F3,7B,18,A9,37,BC,24,8A,14,0C,D6,89,42,A0,80,\
+6E,D9,BB,A2,48,82
+
+; Disable "Sticky Keys"
+[HKEY_CURRENT_USER\Control Panel\Accessibility\StickyKeys]
+"Flags"="506"
+
+; Add "End task" to taskbar
+[HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings]
+"TaskbarEndTask"=dword:00000001
+
+; Disable Bitlocker automatic device encryption
+[HKEY_LOCAL_MACHINE\System\ControlSet001\Control\BitLocker]
+"PreventDeviceEncryption"=dword:00000001
+
+; Disable Spotlight on Desktop
+[HKEY_CURRENT_USER\Software\Policies\Microsoft\Windows\CloudContent]
+"DisableSpotlightCollectionOnDesktop"=dword:00000001
