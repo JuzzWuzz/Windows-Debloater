@@ -557,25 +557,26 @@ $g_Apps = @(
     [pscustomobject]@{ Name = "Microsoft.Paint"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.PowerAutomateDesktop"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.Todos"; DefaultRemove = $true }
+    [pscustomobject]@{ Name = "Microsoft.WidgetsPlatformRuntime"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.Windows.DevHome"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.Windows.Photos"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.WindowsAlarms"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.WindowsCamera"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.WindowsFeedbackHub"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.WindowsSoundRecorder"; DefaultRemove = $true }
+    [pscustomobject]@{ Name = "Microsoft.WindowsTerminal"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.YourPhone"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.ZuneMusic"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "MicrosoftCorporationII.QuickAssist"; DefaultRemove = $true }
-    [pscustomobject]@{ Name = "MSTeams"; DefaultRemove = $true }
-    [pscustomobject]@{ Name = "Microsoft.WidgetsPlatformRuntime"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "MicrosoftWindows.Client.WebExperience"; DefaultRemove = $true }
+    [pscustomobject]@{ Name = "MicrosoftWindows.CrossDevice"; DefaultRemove = $true }
+    [pscustomobject]@{ Name = "MSTeams"; DefaultRemove = $true }
     # Generally I like to keep
     [pscustomobject]@{ Name = "Microsoft.ScreenSketch"; DefaultRemove = $false }
     [pscustomobject]@{ Name = "Microsoft.StorePurchaseApp"; DefaultRemove = $false }
     [pscustomobject]@{ Name = "Microsoft.WindowsCalculator"; DefaultRemove = $false }
     [pscustomobject]@{ Name = "Microsoft.WindowsNotepad"; DefaultRemove = $false }
     [pscustomobject]@{ Name = "Microsoft.WindowsStore"; DefaultRemove = $false }
-    [pscustomobject]@{ Name = "Microsoft.WindowsTerminal"; DefaultRemove = $false }
     # Xbox stuff is sometimes nice to keep
     [pscustomobject]@{ Name = "Microsoft.GamingApp"; DefaultRemove = $false }
     [pscustomobject]@{ Name = "Microsoft.Xbox.TCUI"; DefaultRemove = $false }
@@ -717,7 +718,6 @@ $g_Capabilities = @(
     [pscustomobject]@{ Name = "Microsoft.Wallpapers.Extended*"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.Windows.PowerShell.ISE*"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Print.Management.Console*"; DefaultRemove = $true }
-    [pscustomobject]@{ Name = "VBSCRIPT*"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Language.Handwriting*"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Language.OCR*"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Language.Speech*"; DefaultRemove = $true }
