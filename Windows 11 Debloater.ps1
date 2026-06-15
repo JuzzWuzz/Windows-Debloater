@@ -1102,6 +1102,59 @@ Function DisableTelemetry {
     }
 }
 
+Function GetWakeArmedDevices {
+    powercfg /devicequery wake_armed |
+        ForEach-Object { $_.Trim() } |
+        Where-Object {
+            -not [string]::IsNullOrWhiteSpace($_) -and
+            $_ -ne "NONE"
+        }
+}
+
+Function ListUsbWakeDevices {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "USB Wake Devices" -isolateBlock $true -clearScreen $true
+
+        $devices = @(GetWakeArmedDevices)
+        if ($devices.Count -eq 0) {
+            Write-Host "No USB wake devices found"
+        } else {
+            $devices | ForEach-Object { Write-Host $_ }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function DisableUsbWakeDevices {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "USB Wake Devices" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            $devices = @(GetWakeArmedDevices)
+
+            foreach ($device in $devices) {
+                powercfg /devicedisablewake "$device" | Out-Null
+            }
+
+            if ($devices.Count -eq 0) {
+                Write-Host "No USB wake devices found"
+            } else {
+                Write-Host "USB wake devices disabled" -ForegroundColor "Green"
+                $Global:g_HasMadeChanges = $true
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
 Function Personalisation {
     [CmdletBinding()]
     param (
@@ -1191,8 +1244,10 @@ $m_OneDriveMenu.AddMenuItem((MenuItem "B" "Return to Main Menu" { Break }))
 
 # Customisation Menu
 $m_CustomisationMenu.AddMenuItem((MenuItem "1" "Disable Telemetry"          { DisableTelemetry }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "2" "Apply Personalisation"      { Personalisation $true }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "3" "Revert Personalisation"     { Personalisation $false }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "2" "List USB Wake Devices"      { ListUsbWakeDevices }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "3" "Disable USB Wake Devices"   { DisableUsbWakeDevices }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "4" "Apply Personalisation"      { Personalisation $true }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "5" "Revert Personalisation"     { Personalisation $false }))
 $m_CustomisationMenu.AddMenuItem((MenuItem "B" "Return to Main Menu"        { Break }))
 
 

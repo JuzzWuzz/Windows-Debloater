@@ -67,7 +67,11 @@ The restore flow uses `winget` when available and reapplies the expected OneDriv
 
 ### Customisation
 
-Imports registry presets from `RegFiles`:
+Contains telemetry, wake-device, and personalisation actions.
+
+The USB wake-device actions can list devices currently allowed to wake the computer and disable wake for those devices.
+
+The registry actions import presets from `RegFiles`:
 
 - `Telemetry_Disable.reg` disables telemetry and related privacy settings.
 - `Apply.reg` applies the preferred personalisation, privacy, Explorer, Windows Update, Copilot, Edge, Start menu, taskbar, and context-menu settings.
