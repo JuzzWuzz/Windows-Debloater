@@ -935,11 +935,12 @@ Function OneDriveRemove {
         } else {
             $oneDriveUserFolder = $Env:OneDrive
             $deniedOneDriveDeletion = $false
+            $administratorsGroup = "*S-1-5-32-544"
 
             try {
                 if ($oneDriveUserFolder -and (Test-Path -LiteralPath $oneDriveUserFolder)) {
                     Write-Host "Protecting OneDrive user files..."
-                    icacls $oneDriveUserFolder /deny "Administrators:(D,DC)" | Out-Null
+                    icacls $oneDriveUserFolder /deny "${administratorsGroup}:(D,DC)" | Out-Null
                     $deniedOneDriveDeletion = $true
                 }
 
@@ -964,7 +965,7 @@ Function OneDriveRemove {
             } finally {
                 if ($deniedOneDriveDeletion -and $oneDriveUserFolder -and (Test-Path -LiteralPath $oneDriveUserFolder)) {
                     Write-Host "Restoring OneDrive user folder permissions..."
-                    icacls $oneDriveUserFolder /grant "Administrators:(D,DC)" | Out-Null
+                    icacls $oneDriveUserFolder /remove:d $administratorsGroup | Out-Null
                 }
             }
 
