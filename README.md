@@ -67,9 +67,13 @@ The restore flow uses `winget` when available and reapplies the expected OneDriv
 
 Contains telemetry, PowerShell, WSL, USB wake-device, and personalisation actions.
 
-The PowerShell submenu can install or uninstall PowerShell 7 using `winget`, and hide or restore Windows PowerShell 5.1 from common UI surfaces. The hide action removes Start Menu shortcuts, takes ownership of the three protected built-in Windows PowerShell context-menu keys under `HKEY_CLASSES_ROOT`, grants Administrators Full Control, hides those entries, removes the custom PowerShell 5.1 admin context-menu entries created by this project, and hides the Windows PowerShell profile in Windows Terminal where possible. The restore action recreates the basic Windows PowerShell Start Menu shortcuts, removes the context-menu hide marker, attempts to restore TrustedInstaller ownership on those protected context-menu keys, restores this project's custom PowerShell 5.1 admin context-menu entries, and unhides the Windows Terminal profile where possible.
+The PowerShell submenu can install or uninstall PowerShell 7 using `winget`, and hide or restore Windows PowerShell 5.1 from common UI surfaces. The PowerShell 7 install action also sets its Windows Terminal profile to run elevated where Terminal settings are available. The hide action removes Start Menu shortcuts, takes ownership of the three protected built-in Windows PowerShell context-menu keys under `HKEY_CLASSES_ROOT`, grants Administrators Full Control, hides those entries, and hides the Windows PowerShell profile in Windows Terminal where possible. The restore action recreates the basic Windows PowerShell Start Menu shortcuts, removes the context-menu hide marker, attempts to restore TrustedInstaller ownership on those protected context-menu keys, and unhides the Windows Terminal profile where possible.
 
 Windows PowerShell 5.1 itself is not uninstalled. It is a built-in Windows component and is left available for compatibility.
+
+Windows Terminal is treated as the preferred shell host and is kept by default when removing built-in apps.
+
+The Terminal settings action hides the Command Prompt profile and disables the close-all-tabs confirmation warning.
 
 The WSL submenu can install WSL using `wsl --install --no-launch`, uninstall the WSL package using `wsl --uninstall`, and hide or restore WSL/Linux shell context-menu entries such as `Open Linux shell here`. The uninstall option does not call `wsl --unregister`, so it does not intentionally delete Linux distribution files.
 

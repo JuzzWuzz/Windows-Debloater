@@ -19,6 +19,8 @@ Keep the tool practical, explicit, and understandable. It is not intended to be 
 - OneDrive restore is allowed to reinstall and set OneDrive up again. It does not need to exactly reverse every removal command.
 - Registry reverts should be documented as best-effort inverse presets, not as backups.
 - Do not remove Windows PowerShell 5.1 itself. Hiding/restoring shortcuts, context-menu entries, and Windows Terminal profiles is acceptable; deleting the built-in engine is not. The built-in PowerShell context-menu keys are protected and live at exact `HKEY_CLASSES_ROOT` paths; use the .NET Registry API for ownership/ACL/value changes because PowerShell provider ACL commands can fail against these keys. Restore should remove this script's `ProgrammaticAccessOnly` marker and make a best-effort attempt to put those protected keys back under TrustedInstaller ownership.
+- Windows Terminal is the preferred shell host and should remain in the built-in app list with `DefaultRemove = $false`.
+- Windows Terminal settings are edited in `settings.json`. The Terminal settings action hides Command Prompt profile GUID `{0caa0dad-35be-5f56-a8ff-afceeeaa6101}` and sets `warning.confirmCloseAllTabs` to `false`. PowerShell 7 install should set profile GUID `{574e775e-4f2a-5b96-ac1e-a2962a402336}` `elevate` to `true` where Terminal settings are available.
 - WSL/Linux shell context-menu cleanup should hide or restore shell verbs only. The WSL uninstall action uses `wsl --uninstall`; do not call `wsl --unregister` or delete distribution files unless explicitly requested.
 - Prefer clear menu labels for actions that have stronger side effects, especially provisioned package removal.
 

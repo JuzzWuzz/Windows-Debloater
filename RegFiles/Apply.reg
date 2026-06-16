@@ -4,10 +4,6 @@ Windows Registry Editor Version 5.00
 [HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked]
 "{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}"="Give access to"
 
-; Disable "Open in Terminal"
-[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked]
-"{9f156763-7844-4dc4-b2b1-901f640f5155}"="Open in Terminal"
-
 ; Disable "Include in library" in context menu
 [-HKEY_CLASSES_ROOT\Folder\ShellEx\ContextMenuHandlers\Library Location]
 

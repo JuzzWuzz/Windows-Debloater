@@ -564,7 +564,6 @@ $g_Apps = @(
     [pscustomobject]@{ Name = "Microsoft.WindowsCamera"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.WindowsFeedbackHub"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.WindowsSoundRecorder"; DefaultRemove = $true }
-    [pscustomobject]@{ Name = "Microsoft.WindowsTerminal"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.YourPhone"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.ZuneMusic"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "MicrosoftCorporationII.QuickAssist"; DefaultRemove = $true }
@@ -577,6 +576,7 @@ $g_Apps = @(
     [pscustomobject]@{ Name = "Microsoft.WindowsCalculator"; DefaultRemove = $false }
     [pscustomobject]@{ Name = "Microsoft.WindowsNotepad"; DefaultRemove = $false }
     [pscustomobject]@{ Name = "Microsoft.WindowsStore"; DefaultRemove = $false }
+    [pscustomobject]@{ Name = "Microsoft.WindowsTerminal"; DefaultRemove = $false }
     # Xbox stuff is sometimes nice to keep
     [pscustomobject]@{ Name = "Microsoft.GamingApp"; DefaultRemove = $false }
     [pscustomobject]@{ Name = "Microsoft.Xbox.TCUI"; DefaultRemove = $false }
@@ -1216,11 +1216,22 @@ Function InstallPowerShell7 {
             if ($winget) {
                 if (TestPowerShell7Installed) {
                     Write-Host "PowerShell 7 is already installed" -ForegroundColor "Green"
+                    if (SetWindowsTerminalPowerShell7ProfileAdmin) {
+                        Write-Host "PowerShell 7 Windows Terminal profile set to run as Administrator" -ForegroundColor "Green"
+                        $Global:g_HasMadeChanges = $true
+                    } else {
+                        Write-Host "Windows Terminal settings not found, skipping PowerShell 7 profile update" -ForegroundColor Yellow
+                    }
                 } else {
                     Write-Host "Installing PowerShell 7..."
                     $result = InvokeWinget @("install", "--id", "Microsoft.PowerShell", "--exact", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements")
                     if ($result.ExitCode -eq 0) {
                         Write-Host "PowerShell 7 installed" -ForegroundColor "Green"
+                        if (SetWindowsTerminalPowerShell7ProfileAdmin) {
+                            Write-Host "PowerShell 7 Windows Terminal profile set to run as Administrator" -ForegroundColor "Green"
+                        } else {
+                            Write-Host "Windows Terminal settings not found, skipping PowerShell 7 profile update" -ForegroundColor Yellow
+                        }
                         $Global:g_HasMadeChanges = $true
                     } else {
                         Write-Host $("PowerShell 7 installation failed, winget exited with code $($result.ExitCode)") -ForegroundColor Red
@@ -1451,6 +1462,176 @@ Function RestoreProtectedShellContextMenuEntries {
     }
 
     return $updated
+}
+
+Function GetWindowsTerminalSettingsPaths {
+    return @(
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json",
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json",
+        "$env:LOCALAPPDATA\Microsoft\Windows Terminal\settings.json"
+    )
+}
+
+Function GetWindowsTerminalWritableSettingsPaths {
+    $settingsPaths = @(GetWindowsTerminalSettingsPaths)
+    $existingSettingsPaths = @($settingsPaths | Where-Object { Test-Path -LiteralPath $_ })
+    if ($existingSettingsPaths.Count -gt 0) {
+        return $existingSettingsPaths
+    }
+
+    foreach ($settingsPath in $settingsPaths) {
+        $settingsDirectory = Split-Path -Parent $settingsPath
+        if (Test-Path -LiteralPath $settingsDirectory) {
+            return @($settingsPath)
+        }
+    }
+
+    return @()
+}
+
+Function GetWindowsTerminalSettings {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String] $settingsPath
+    )
+
+    if (Test-Path -LiteralPath $settingsPath) {
+        $settingsContent = Get-Content -LiteralPath $settingsPath -Raw
+        if (![String]::IsNullOrWhiteSpace($settingsContent)) {
+            return ($settingsContent | ConvertFrom-Json)
+        }
+    }
+
+    $settings = [pscustomobject]@{}
+    $settings | Add-Member -MemberType NoteProperty -Name '$schema' -Value "https://aka.ms/terminal-profiles-schema" -Force
+    return $settings
+}
+
+Function EnsureWindowsTerminalProfilesList {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [psobject] $settings
+    )
+
+    if (($settings.PSObject.Properties.Name -notcontains "profiles") -or ($null -eq $settings.profiles)) {
+        $settings | Add-Member -MemberType NoteProperty -Name profiles -Value ([pscustomobject]@{}) -Force
+    }
+    if (($settings.profiles.PSObject.Properties.Name -notcontains "list") -or ($null -eq $settings.profiles.list)) {
+        $settings.profiles | Add-Member -MemberType NoteProperty -Name list -Value @() -Force
+    }
+}
+
+Function SetWindowsTerminalProfileProperty {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [psobject] $settings,
+
+        [Parameter(Position = 1, Mandatory)]
+        [String] $profileGuid,
+
+        [Parameter(Position = 2, Mandatory)]
+        [String] $propertyName,
+
+        [Parameter(Position = 3, Mandatory)]
+        [object] $propertyValue
+    )
+
+    EnsureWindowsTerminalProfilesList $settings
+
+    $profiles = @($settings.profiles.list)
+    $profile = $profiles | Where-Object { $_.guid -eq $profileGuid } | Select-Object -First 1
+    if ($null -eq $profile) {
+        $profile = [pscustomobject]@{
+            guid = $profileGuid
+        }
+        $settings.profiles.list = @($profiles + $profile)
+    }
+
+    $profile | Add-Member -MemberType NoteProperty -Name $propertyName -Value $propertyValue -Force
+}
+
+Function SaveWindowsTerminalSettings {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String] $settingsPath,
+
+        [Parameter(Position = 1, Mandatory)]
+        [psobject] $settings
+    )
+
+    New-Item -Path (Split-Path -Parent $settingsPath) -ItemType Directory -Force | Out-Null
+
+    $backupPath = "$settingsPath.bak"
+    if ((Test-Path -LiteralPath $settingsPath) -and !(Test-Path -LiteralPath $backupPath)) {
+        Copy-Item -LiteralPath $settingsPath -Destination $backupPath -ErrorAction SilentlyContinue
+    }
+
+    $settings | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $settingsPath -Encoding UTF8
+}
+
+Function UpdateWindowsTerminalSettings {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [ScriptBlock] $updateSettings
+    )
+
+    $updated = $false
+    $settingsPaths = @(GetWindowsTerminalWritableSettingsPaths)
+    foreach ($settingsPath in $settingsPaths) {
+        try {
+            $settings = GetWindowsTerminalSettings $settingsPath
+            Invoke-Command -ScriptBlock $updateSettings -ArgumentList $settings
+            SaveWindowsTerminalSettings $settingsPath $settings
+            $updated = $true
+        } catch {
+            Write-Host $("Could not update Windows Terminal settings: $settingsPath") -ForegroundColor Yellow
+            Write-Host $_.Exception.Message -ForegroundColor Yellow
+        }
+    }
+
+    return $updated
+}
+
+Function SetWindowsTerminalPowerShell7ProfileAdmin {
+    return (UpdateWindowsTerminalSettings {
+        param(
+            [psobject] $settings
+        )
+
+        SetWindowsTerminalProfileProperty $settings "{574e775e-4f2a-5b96-ac1e-a2962a402336}" "elevate" $true
+    })
+}
+
+Function ApplyTerminalSettings {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "Apply Terminal Settings" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            Write-Host "Applying Windows Terminal settings..."
+
+            $updated = UpdateWindowsTerminalSettings {
+                param(
+                    [psobject] $settings
+                )
+
+                SetWindowsTerminalProfileProperty $settings "{0caa0dad-35be-5f56-a8ff-afceeeaa6101}" "hidden" $true
+                $settings | Add-Member -MemberType NoteProperty -Name "warning.confirmCloseAllTabs" -Value $false -Force
+            }
+
+            if ($updated) {
+                Write-Host "Windows Terminal settings applied" -ForegroundColor "Green"
+                $Global:g_HasMadeChanges = $true
+            } else {
+                Write-Host "Windows Terminal settings not found" -ForegroundColor Yellow
+            }
+        }
+
+        AwaitKeyPress
+    }
 }
 
 Function HideWindowsTerminalWindowsPowerShellProfile {
@@ -2203,8 +2384,9 @@ $m_CustomisationMenu.AddMenuItem((MenuItem "1" "Disable Telemetry"      { Disabl
 $m_CustomisationMenu.AddMenuItem((MenuItem "2" "PowerShell"             { $m_PowerShellMenu.PrintMenu() }))
 $m_CustomisationMenu.AddMenuItem((MenuItem "3" "WSL"                    { $m_WslMenu.PrintMenu() }))
 $m_CustomisationMenu.AddMenuItem((MenuItem "4" "USB Wake Devices"       { $m_UsbMenu.PrintMenu() }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "5" "Apply Personalisation"  { Personalisation $true }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "6" "Revert Personalisation" { Personalisation $false }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "5" "Apply Terminal Settings" { ApplyTerminalSettings }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "6" "Apply Personalisation"   { Personalisation $true }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "7" "Revert Personalisation"  { Personalisation $false }))
 $m_CustomisationMenu.AddMenuItem((MenuItem "B" "Return to Main Menu"    { Break }))
 
 # PowerShell Menu
