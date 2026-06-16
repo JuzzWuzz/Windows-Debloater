@@ -1084,6 +1084,11 @@ Function OneDriveRestore {
 ################################################################################
 
 
+########################################
+# Telemetry
+##########
+
+
 Function DisableTelemetry {
     [CmdletBinding()]
     param ()
@@ -1101,6 +1106,12 @@ Function DisableTelemetry {
         AwaitKeyPress
     }
 }
+
+
+########################################
+# USB Wake Devices
+##########
+
 
 Function GetWakeArmedDevices {
     powercfg /devicequery wake_armed |
@@ -1155,6 +1166,948 @@ Function DisableUsbWakeDevices {
     }
 }
 
+
+########################################
+# PowerShell
+##########
+
+
+Function TestPowerShell7Installed {
+    $result = InvokeWinget @("list", "--id", "Microsoft.PowerShell", "--exact")
+    return (($result.Output -join "`n") -match "Microsoft\.PowerShell")
+}
+
+Function InvokeWinget {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String[]] $arguments
+    )
+
+    $output = @(& winget @arguments 2>&1 | ForEach-Object { $_.ToString() })
+    return [pscustomobject]@{
+        ExitCode = $LASTEXITCODE
+        Output = $output
+    }
+}
+
+Function WriteWingetOutput {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [psobject] $wingetResult
+    )
+
+    if ($wingetResult.Output.Count -gt 0) {
+        Write-Host ""
+        Write-Host "winget output:"
+        $wingetResult.Output | ForEach-Object { Write-Host $_ }
+    }
+}
+
+Function InstallPowerShell7 {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "PowerShell 7 Installation" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            $winget = Get-Command winget -ErrorAction SilentlyContinue
+            if ($winget) {
+                if (TestPowerShell7Installed) {
+                    Write-Host "PowerShell 7 is already installed" -ForegroundColor "Green"
+                } else {
+                    Write-Host "Installing PowerShell 7..."
+                    $result = InvokeWinget @("install", "--id", "Microsoft.PowerShell", "--exact", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements")
+                    if ($result.ExitCode -eq 0) {
+                        Write-Host "PowerShell 7 installed" -ForegroundColor "Green"
+                        $Global:g_HasMadeChanges = $true
+                    } else {
+                        Write-Host $("PowerShell 7 installation failed, winget exited with code $($result.ExitCode)") -ForegroundColor Red
+                        WriteWingetOutput $result
+                    }
+                }
+            } else {
+                Write-Host "winget not found, cannot install PowerShell 7 automatically" -ForegroundColor Red
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function UninstallPowerShell7 {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "PowerShell 7 Uninstallation" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            $winget = Get-Command winget -ErrorAction SilentlyContinue
+            if ($winget) {
+                if (!(TestPowerShell7Installed)) {
+                    Write-Host "PowerShell 7 is not installed" -ForegroundColor "Green"
+                } else {
+                    Write-Host "Uninstalling PowerShell 7..."
+                    $result = InvokeWinget @("uninstall", "--id", "Microsoft.PowerShell", "--exact")
+                    if ($result.ExitCode -eq 0) {
+                        Write-Host "PowerShell 7 uninstalled" -ForegroundColor "Green"
+                        $Global:g_HasMadeChanges = $true
+                    } else {
+                        Write-Host $("PowerShell 7 uninstallation failed, winget exited with code $($result.ExitCode)") -ForegroundColor Red
+                        WriteWingetOutput $result
+                    }
+                }
+            } else {
+                Write-Host "winget not found, cannot uninstall PowerShell 7 automatically" -ForegroundColor Red
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function EnableProcessPrivilege {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String] $privilegeName
+    )
+
+    if ($null -eq ("TokenPrivilege" -as [Type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+
+public static class TokenPrivilege
+{
+    private const UInt32 TOKEN_ADJUST_PRIVILEGES = 0x0020;
+    private const UInt32 TOKEN_QUERY = 0x0008;
+    private const Int32 SE_PRIVILEGE_ENABLED = 0x0002;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LUID
+    {
+        public UInt32 LowPart;
+        public Int32 HighPart;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LUID_AND_ATTRIBUTES
+    {
+        public LUID Luid;
+        public Int32 Attributes;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TOKEN_PRIVILEGES
+    {
+        public Int32 PrivilegeCount;
+        public LUID_AND_ATTRIBUTES Privileges;
+    }
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool OpenProcessToken(IntPtr ProcessHandle, UInt32 DesiredAccess, out IntPtr TokenHandle);
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    private static extern bool LookupPrivilegeValue(string lpSystemName, string lpName, out LUID lpLuid);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern bool AdjustTokenPrivileges(IntPtr TokenHandle, bool DisableAllPrivileges, ref TOKEN_PRIVILEGES NewState, Int32 BufferLength, IntPtr PreviousState, IntPtr ReturnLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    public static void EnablePrivilege(string privilegeName)
+    {
+        IntPtr tokenHandle;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, out tokenHandle))
+        {
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        }
+
+        try
+        {
+            LUID luid;
+            if (!LookupPrivilegeValue(null, privilegeName, out luid))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+
+            TOKEN_PRIVILEGES tokenPrivileges = new TOKEN_PRIVILEGES();
+            tokenPrivileges.PrivilegeCount = 1;
+            tokenPrivileges.Privileges.Luid = luid;
+            tokenPrivileges.Privileges.Attributes = SE_PRIVILEGE_ENABLED;
+
+            if (!AdjustTokenPrivileges(tokenHandle, false, ref tokenPrivileges, 0, IntPtr.Zero, IntPtr.Zero))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            }
+
+            Int32 error = Marshal.GetLastWin32Error();
+            if (error != 0)
+            {
+                throw new Win32Exception(error);
+            }
+        }
+        finally
+        {
+            CloseHandle(tokenHandle);
+        }
+    }
+}
+'@
+    }
+
+    [TokenPrivilege]::EnablePrivilege($privilegeName)
+}
+
+Function GrantAdministratorsRegistryKeyFullControl {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String] $registryPath
+    )
+
+    $administratorsSid = New-Object System.Security.Principal.SecurityIdentifier(
+        [System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid,
+        $null
+    )
+
+    try {
+        EnableProcessPrivilege "SeTakeOwnershipPrivilege"
+        try {
+            EnableProcessPrivilege "SeRestorePrivilege"
+        } catch {
+            Write-Host "Could not enable SeRestorePrivilege, continuing with SeTakeOwnershipPrivilege" -ForegroundColor Yellow
+        }
+
+        $subKeyPath = GetHkcrSubKeyPath $registryPath
+        GrantAdministratorsHkcrSubKeyFullControl $subKeyPath $administratorsSid
+        return $true
+    } catch {
+        Write-Host $("Could not grant Administrators full control on $registryPath") -ForegroundColor Yellow
+        Write-Host $_.Exception.Message -ForegroundColor Yellow
+        return $false
+    }
+}
+
+Function HideProtectedShellContextMenuEntries {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String[]] $contextMenuPaths
+    )
+
+    $updated = $false
+    foreach ($contextMenuPath in $contextMenuPaths) {
+        if (!(Test-Path -LiteralPath $contextMenuPath)) {
+            Continue
+        }
+
+        if (GrantAdministratorsRegistryKeyFullControl $contextMenuPath) {
+            try {
+                SetHkcrStringValue $contextMenuPath "ProgrammaticAccessOnly"
+                $updated = $true
+            } catch {
+                Write-Host $("Could not hide context menu entry: $contextMenuPath") -ForegroundColor Yellow
+                Write-Host $_.Exception.Message -ForegroundColor Yellow
+            }
+        }
+    }
+
+    return $updated
+}
+
+Function RestoreProtectedShellContextMenuEntries {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String[]] $contextMenuPaths
+    )
+
+    $updated = $false
+    foreach ($contextMenuPath in $contextMenuPaths) {
+        if (!(Test-Path -LiteralPath $contextMenuPath)) {
+            Continue
+        }
+
+        if (GrantAdministratorsRegistryKeyFullControl $contextMenuPath) {
+            try {
+                if (RemoveHkcrValue $contextMenuPath "ProgrammaticAccessOnly") {
+                    $updated = $true
+                }
+            } catch {
+                Write-Host $("Could not restore context menu entry: $contextMenuPath") -ForegroundColor Yellow
+                Write-Host $_.Exception.Message -ForegroundColor Yellow
+            }
+
+            if (RestoreProtectedRegistryKeyOwnership $contextMenuPath) {
+                $updated = $true
+            }
+        }
+    }
+
+    return $updated
+}
+
+Function HideWindowsTerminalWindowsPowerShellProfile {
+    $settingsPaths = @(
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json",
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json",
+        "$env:LOCALAPPDATA\Microsoft\Windows Terminal\settings.json"
+    )
+    $windowsPowerShellGuid = "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}"
+    $updated = $false
+
+    foreach ($settingsPath in $settingsPaths) {
+        if (!(Test-Path -LiteralPath $settingsPath)) {
+            Continue
+        }
+
+        try {
+            $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+            if (($settings.PSObject.Properties.Name -notcontains "profiles") -or ($null -eq $settings.profiles)) {
+                $settings | Add-Member -MemberType NoteProperty -Name profiles -Value ([pscustomobject]@{}) -Force
+            }
+            if (($settings.profiles.PSObject.Properties.Name -notcontains "list") -or ($null -eq $settings.profiles.list)) {
+                $settings.profiles | Add-Member -MemberType NoteProperty -Name list -Value @() -Force
+            }
+
+            $profiles = @($settings.profiles.list)
+            $profile = $profiles | Where-Object { $_.guid -eq $windowsPowerShellGuid } | Select-Object -First 1
+            if ($null -eq $profile) {
+                $settings.profiles.list = @($profiles + [pscustomobject]@{
+                    guid = $windowsPowerShellGuid
+                    hidden = $true
+                })
+            } else {
+                $profile | Add-Member -MemberType NoteProperty -Name hidden -Value $true -Force
+            }
+
+            $backupPath = "$settingsPath.bak"
+            if (!(Test-Path -LiteralPath $backupPath)) {
+                Copy-Item -LiteralPath $settingsPath -Destination $backupPath -ErrorAction SilentlyContinue
+            }
+            $settings | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $settingsPath -Encoding UTF8
+            $updated = $true
+        } catch {
+            Write-Host $("Could not update Windows Terminal settings: $settingsPath") -ForegroundColor Yellow
+        }
+    }
+
+    return $updated
+}
+
+Function ShowWindowsTerminalWindowsPowerShellProfile {
+    $settingsPaths = @(
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json",
+        "$env:LOCALAPPDATA\Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json",
+        "$env:LOCALAPPDATA\Microsoft\Windows Terminal\settings.json"
+    )
+    $windowsPowerShellGuid = "{61c54bbd-c2c6-5271-96e7-009a87ff44bf}"
+    $updated = $false
+
+    foreach ($settingsPath in $settingsPaths) {
+        if (!(Test-Path -LiteralPath $settingsPath)) {
+            Continue
+        }
+
+        try {
+            $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+            if (($settings.PSObject.Properties.Name -notcontains "profiles") -or ($null -eq $settings.profiles)) {
+                Continue
+            }
+            if (($settings.profiles.PSObject.Properties.Name -notcontains "list") -or ($null -eq $settings.profiles.list)) {
+                Continue
+            }
+
+            $profile = @($settings.profiles.list) | Where-Object { $_.guid -eq $windowsPowerShellGuid } | Select-Object -First 1
+            if ($null -eq $profile) {
+                Continue
+            }
+
+            $profile | Add-Member -MemberType NoteProperty -Name hidden -Value $false -Force
+            $settings | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $settingsPath -Encoding UTF8
+            $updated = $true
+        } catch {
+            Write-Host $("Could not update Windows Terminal settings: $settingsPath") -ForegroundColor Yellow
+        }
+    }
+
+    return $updated
+}
+
+Function GetHkcrSubKeyPath {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String] $registryPath
+    )
+
+    $normalizedPath = $registryPath.Replace("/", "\")
+    if ($normalizedPath.StartsWith("HKCR:\")) {
+        return $normalizedPath.Substring("HKCR:\".Length)
+    }
+    if ($normalizedPath.StartsWith("Registry::HKEY_CLASSES_ROOT\")) {
+        return $normalizedPath.Substring("Registry::HKEY_CLASSES_ROOT\".Length)
+    }
+    if ($normalizedPath.StartsWith("HKEY_CLASSES_ROOT\")) {
+        return $normalizedPath.Substring("HKEY_CLASSES_ROOT\".Length)
+    }
+
+    throw "Only HKEY_CLASSES_ROOT paths are supported here: $registryPath"
+}
+
+Function GrantAdministratorsHkcrSubKeyFullControl {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String] $subKeyPath,
+
+        [Parameter(Position = 1, Mandatory)]
+        [System.Security.Principal.SecurityIdentifier] $administratorsSid
+    )
+
+    $takeOwnershipRights = [System.Security.AccessControl.RegistryRights]::TakeOwnership -bor [System.Security.AccessControl.RegistryRights]::ReadPermissions
+    $takeOwnershipKey = [Microsoft.Win32.Registry]::ClassesRoot.OpenSubKey(
+        $subKeyPath,
+        [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+        $takeOwnershipRights
+    )
+    if ($null -eq $takeOwnershipKey) {
+        throw "Registry key not found: HKEY_CLASSES_ROOT\$subKeyPath"
+    }
+
+    try {
+        $security = $takeOwnershipKey.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Owner)
+        $security.SetOwner($administratorsSid)
+        $takeOwnershipKey.SetAccessControl($security)
+    } finally {
+        $takeOwnershipKey.Close()
+    }
+
+    $changePermissionsRights = [System.Security.AccessControl.RegistryRights]::ChangePermissions -bor [System.Security.AccessControl.RegistryRights]::ReadKey
+    $permissionsKey = [Microsoft.Win32.Registry]::ClassesRoot.OpenSubKey(
+        $subKeyPath,
+        [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+        $changePermissionsRights
+    )
+    if ($null -eq $permissionsKey) {
+        throw "Could not reopen registry key permissions: HKEY_CLASSES_ROOT\$subKeyPath"
+    }
+
+    try {
+        $security = $permissionsKey.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+        $accessRule = New-Object System.Security.AccessControl.RegistryAccessRule(
+            $administratorsSid,
+            [System.Security.AccessControl.RegistryRights]::FullControl,
+            [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow
+        )
+        $security.SetAccessRule($accessRule)
+        $permissionsKey.SetAccessControl($security)
+        $childSubKeyNames = @($permissionsKey.GetSubKeyNames())
+    } finally {
+        $permissionsKey.Close()
+    }
+
+    foreach ($childSubKeyName in $childSubKeyNames) {
+        GrantAdministratorsHkcrSubKeyFullControl "$subKeyPath\$childSubKeyName" $administratorsSid
+    }
+}
+
+Function RestoreProtectedRegistryKeyOwnership {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String] $registryPath
+    )
+
+    $administratorsSid = New-Object System.Security.Principal.SecurityIdentifier(
+        [System.Security.Principal.WellKnownSidType]::BuiltinAdministratorsSid,
+        $null
+    )
+    $trustedInstallerSid = New-Object System.Security.Principal.SecurityIdentifier(
+        "S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464"
+    )
+
+    try {
+        EnableProcessPrivilege "SeTakeOwnershipPrivilege"
+        EnableProcessPrivilege "SeRestorePrivilege"
+
+        $subKeyPath = GetHkcrSubKeyPath $registryPath
+        RestoreHkcrSubKeyTrustedInstallerOwnership $subKeyPath $administratorsSid $trustedInstallerSid
+        return $true
+    } catch {
+        Write-Host $("Could not restore protected registry ownership on $registryPath") -ForegroundColor Yellow
+        Write-Host $_.Exception.Message -ForegroundColor Yellow
+        return $false
+    }
+}
+
+Function RestoreHkcrSubKeyTrustedInstallerOwnership {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String] $subKeyPath,
+
+        [Parameter(Position = 1, Mandatory)]
+        [System.Security.Principal.SecurityIdentifier] $administratorsSid,
+
+        [Parameter(Position = 2, Mandatory)]
+        [System.Security.Principal.SecurityIdentifier] $trustedInstallerSid
+    )
+
+    $readKey = [Microsoft.Win32.Registry]::ClassesRoot.OpenSubKey(
+        $subKeyPath,
+        [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadSubTree,
+        [System.Security.AccessControl.RegistryRights]::ReadKey
+    )
+    if ($null -eq $readKey) {
+        throw "Registry key not found: HKEY_CLASSES_ROOT\$subKeyPath"
+    }
+
+    try {
+        $childSubKeyNames = @($readKey.GetSubKeyNames())
+    } finally {
+        $readKey.Close()
+    }
+
+    foreach ($childSubKeyName in $childSubKeyNames) {
+        RestoreHkcrSubKeyTrustedInstallerOwnership "$subKeyPath\$childSubKeyName" $administratorsSid $trustedInstallerSid
+    }
+
+    $ownerRights = [System.Security.AccessControl.RegistryRights]::TakeOwnership -bor [System.Security.AccessControl.RegistryRights]::ReadPermissions
+    $ownerKey = [Microsoft.Win32.Registry]::ClassesRoot.OpenSubKey(
+        $subKeyPath,
+        [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+        $ownerRights
+    )
+    if ($null -eq $ownerKey) {
+        throw "Could not reopen registry key owner: HKEY_CLASSES_ROOT\$subKeyPath"
+    }
+
+    try {
+        $security = $ownerKey.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Owner)
+        $security.SetOwner($trustedInstallerSid)
+        $ownerKey.SetAccessControl($security)
+    } finally {
+        $ownerKey.Close()
+    }
+
+    $changePermissionsRights = [System.Security.AccessControl.RegistryRights]::ChangePermissions -bor [System.Security.AccessControl.RegistryRights]::ReadKey
+    $permissionsKey = [Microsoft.Win32.Registry]::ClassesRoot.OpenSubKey(
+        $subKeyPath,
+        [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+        $changePermissionsRights
+    )
+    if ($null -eq $permissionsKey) {
+        throw "Could not reopen registry key permissions: HKEY_CLASSES_ROOT\$subKeyPath"
+    }
+
+    try {
+        $security = $permissionsKey.GetAccessControl([System.Security.AccessControl.AccessControlSections]::Access)
+        $accessRule = New-Object System.Security.AccessControl.RegistryAccessRule(
+            $administratorsSid,
+            [System.Security.AccessControl.RegistryRights]::FullControl,
+            [System.Security.AccessControl.InheritanceFlags]::ContainerInherit,
+            [System.Security.AccessControl.PropagationFlags]::None,
+            [System.Security.AccessControl.AccessControlType]::Allow
+        )
+        if ($security.RemoveAccessRule($accessRule)) {
+            $permissionsKey.SetAccessControl($security)
+        }
+    } finally {
+        $permissionsKey.Close()
+    }
+}
+
+Function SetHkcrStringValue {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String] $registryPath,
+
+        [Parameter(Position = 1, Mandatory)]
+        [String] $name,
+
+        [Parameter(Position = 2)]
+        [String] $value = ""
+    )
+
+    $subKeyPath = GetHkcrSubKeyPath $registryPath
+    $rights = [System.Security.AccessControl.RegistryRights]::SetValue -bor [System.Security.AccessControl.RegistryRights]::ReadKey
+    $key = [Microsoft.Win32.Registry]::ClassesRoot.OpenSubKey(
+        $subKeyPath,
+        [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+        $rights
+    )
+    if ($null -eq $key) {
+        throw "Registry key not found: HKEY_CLASSES_ROOT\$subKeyPath"
+    }
+
+    try {
+        $key.SetValue($name, $value, [Microsoft.Win32.RegistryValueKind]::String)
+    } finally {
+        $key.Close()
+    }
+}
+
+Function RemoveHkcrValue {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String] $registryPath,
+
+        [Parameter(Position = 1, Mandatory)]
+        [String] $name
+    )
+
+    $subKeyPath = GetHkcrSubKeyPath $registryPath
+    $rights = [System.Security.AccessControl.RegistryRights]::SetValue -bor [System.Security.AccessControl.RegistryRights]::ReadKey
+    $key = [Microsoft.Win32.Registry]::ClassesRoot.OpenSubKey(
+        $subKeyPath,
+        [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree,
+        $rights
+    )
+    if ($null -eq $key) {
+        throw "Registry key not found: HKEY_CLASSES_ROOT\$subKeyPath"
+    }
+
+    try {
+        $valueExists = @($key.GetValueNames()) -contains $name
+        if ($valueExists) {
+            $key.DeleteValue($name, $false)
+        }
+        return $valueExists
+    } finally {
+        $key.Close()
+    }
+}
+
+Function RestoreWindowsPowerShellStartMenuShortcuts {
+    $shortcutDirectory = Join-Path ([Environment]::GetFolderPath("CommonPrograms")) "Windows PowerShell"
+    $shortcuts = @(
+        [pscustomobject]@{
+            Name = "Windows PowerShell.lnk"
+            Target = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+        },
+        [pscustomobject]@{
+            Name = "Windows PowerShell (x86).lnk"
+            Target = "$env:SystemRoot\SysWOW64\WindowsPowerShell\v1.0\powershell.exe"
+        }
+    )
+    $updated = $false
+
+    foreach ($shortcutData in $shortcuts) {
+        if (Test-Path -LiteralPath $shortcutData.Target) {
+            $shortcutPath = Join-Path $shortcutDirectory $shortcutData.Name
+            $targetPath = $shortcutData.Target
+            $workingDirectory = $env:USERPROFILE
+            $iconLocation = "$($shortcutData.Target),0"
+
+            New-Item -Path (Split-Path -Parent $shortcutPath) -ItemType Directory -Force | Out-Null
+
+            $shell = New-Object -ComObject WScript.Shell
+            $shortcut = $shell.CreateShortcut($shortcutPath)
+            $shortcut.TargetPath = $targetPath
+            if ($workingDirectory -ne "") {
+                $shortcut.WorkingDirectory = $workingDirectory
+            }
+            if ($iconLocation -ne "") {
+                $shortcut.IconLocation = $iconLocation
+            }
+            $shortcut.Save()
+
+            $updated = $true
+        }
+    }
+
+    return $updated
+}
+
+Function HideWindowsPowerShell51 {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "Hide Windows PowerShell 5.1" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            $hasMadeChanges = $false
+
+            Write-Host "Removing Windows PowerShell Start Menu shortcuts..."
+            $shortcutPaths = @(
+                "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Windows PowerShell",
+                "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Windows PowerShell"
+            )
+            foreach ($shortcutPath in $shortcutPaths) {
+                if (Test-Path -LiteralPath $shortcutPath) {
+                    Remove-Item -LiteralPath $shortcutPath -Recurse -Force -ErrorAction SilentlyContinue
+                    $hasMadeChanges = $true
+                }
+            }
+
+            Write-Host "Hiding Windows PowerShell context menu entries..."
+            $builtInContextMenuPaths = @(
+                "HKCR:\Directory\shell\Powershell",
+                "HKCR:\Directory\Background\shell\Powershell",
+                "HKCR:\Drive\shell\Powershell"
+            )
+            if (HideProtectedShellContextMenuEntries $builtInContextMenuPaths) {
+                $hasMadeChanges = $true
+            }
+
+            Write-Host "Hiding Windows PowerShell profile in Windows Terminal..."
+            if (HideWindowsTerminalWindowsPowerShellProfile) {
+                $hasMadeChanges = $true
+            }
+
+            Write-Host "Windows PowerShell 5.1 hidden where possible" -ForegroundColor "Green"
+            if ($hasMadeChanges) {
+                $Global:g_HasMadeChanges = $true
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function RestoreWindowsPowerShell51 {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "Restore Windows PowerShell 5.1" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            $hasMadeChanges = $false
+
+            Write-Host "Restoring Windows PowerShell Start Menu shortcuts..."
+            if (RestoreWindowsPowerShellStartMenuShortcuts) {
+                $hasMadeChanges = $true
+            }
+
+            Write-Host "Showing Windows PowerShell context menu entries..."
+            $builtInContextMenuPaths = @(
+                "HKCR:\Directory\shell\Powershell",
+                "HKCR:\Directory\Background\shell\Powershell",
+                "HKCR:\Drive\shell\Powershell"
+            )
+            if (RestoreProtectedShellContextMenuEntries $builtInContextMenuPaths) {
+                $hasMadeChanges = $true
+            }
+
+            Write-Host "Showing Windows PowerShell profile in Windows Terminal..."
+            if (ShowWindowsTerminalWindowsPowerShellProfile) {
+                $hasMadeChanges = $true
+            }
+
+            Write-Host "Windows PowerShell 5.1 restored where possible" -ForegroundColor "Green"
+            if ($hasMadeChanges) {
+                $Global:g_HasMadeChanges = $true
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+
+########################################
+# WSL
+##########
+
+
+Function InvokeWsl {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String[]] $arguments
+    )
+
+    $output = @(& wsl.exe @arguments 2>&1 | ForEach-Object { $_.ToString() -replace [string][char]0, "" })
+    return [pscustomobject]@{
+        ExitCode = $LASTEXITCODE
+        Output = $output
+    }
+}
+
+Function WriteWslOutput {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [psobject] $wslResult
+    )
+
+    $output = @($wslResult.Output | Where-Object { $_ -ne "" })
+    if ($output.Count -gt 0) {
+        Write-Host ""
+        Write-Host "wsl output:"
+        $output | ForEach-Object { Write-Host $_ }
+    }
+}
+
+Function HideShellContextMenuEntries {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String[]] $contextMenuPaths
+    )
+
+    $updated = $false
+    foreach ($contextMenuPath in $contextMenuPaths) {
+        if (Test-Path -LiteralPath $contextMenuPath) {
+            New-ItemProperty -Path $contextMenuPath -Name "ProgrammaticAccessOnly" -Value "" -PropertyType String -Force | Out-Null
+            $updated = $true
+        }
+    }
+
+    return $updated
+}
+
+Function RestoreShellContextMenuEntries {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String[]] $contextMenuPaths
+    )
+
+    $updated = $false
+    foreach ($contextMenuPath in $contextMenuPaths) {
+        if (Test-Path -LiteralPath $contextMenuPath) {
+            $contextMenuProperties = Get-ItemProperty -LiteralPath $contextMenuPath -Name "ProgrammaticAccessOnly" -ErrorAction SilentlyContinue
+            if ($null -ne $contextMenuProperties) {
+                Remove-ItemProperty -LiteralPath $contextMenuPath -Name "ProgrammaticAccessOnly" -ErrorAction SilentlyContinue
+                $updated = $true
+            }
+        }
+    }
+
+    return $updated
+}
+
+Function InstallWsl {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "WSL Installation" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+            if ($wsl) {
+                Write-Host "Installing WSL..."
+                $result = InvokeWsl @("--install", "--no-launch")
+                if ($result.ExitCode -eq 0) {
+                    Write-Host "WSL install command completed" -ForegroundColor "Green"
+                    Write-Host "A reboot may be required before WSL is ready" -ForegroundColor Yellow
+                    $Global:g_HasMadeChanges = $true
+                } else {
+                    Write-Host $("WSL installation failed, wsl exited with code $($result.ExitCode)") -ForegroundColor Red
+                    WriteWslOutput $result
+                }
+            } else {
+                Write-Host "wsl.exe not found, cannot install WSL automatically" -ForegroundColor Red
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function UninstallWsl {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "WSL Uninstallation" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+            if ($wsl) {
+                Write-Host "Shutting down WSL..."
+                InvokeWsl @("--shutdown") | Out-Null
+
+                Write-Host "Uninstalling WSL..."
+                $result = InvokeWsl @("--uninstall")
+                if ($result.ExitCode -eq 0) {
+                    Write-Host "WSL uninstall command completed" -ForegroundColor "Green"
+                    Write-Host "This option does not unregister Linux distributions or delete distro files" -ForegroundColor Yellow
+                    $Global:g_HasMadeChanges = $true
+                } else {
+                    Write-Host $("WSL uninstallation failed, wsl exited with code $($result.ExitCode)") -ForegroundColor Red
+                    WriteWslOutput $result
+                }
+            } else {
+                Write-Host "wsl.exe not found, cannot uninstall WSL automatically" -ForegroundColor Red
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function HideWslLinuxShellContextMenus {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "Hide WSL Linux Shell Context Menus" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            Write-Host "Hiding WSL Linux shell context menu entries..."
+            $wslContextMenuPaths = @(
+                "HKCR:\Directory\shell\WSL",
+                "HKCR:\Directory\Background\shell\WSL",
+                "HKCR:\Drive\shell\WSL"
+            )
+
+            if (HideShellContextMenuEntries $wslContextMenuPaths) {
+                Write-Host "WSL Linux shell context menu entries hidden" -ForegroundColor "Green"
+                $Global:g_HasMadeChanges = $true
+            } else {
+                Write-Host "No WSL Linux shell context menu entries found"
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function RestoreWslLinuxShellContextMenus {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "Restore WSL Linux Shell Context Menus" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            Write-Host "Restoring WSL Linux shell context menu entries..."
+            $wslContextMenuPaths = @(
+                "HKCR:\Directory\shell\WSL",
+                "HKCR:\Directory\Background\shell\WSL",
+                "HKCR:\Drive\shell\WSL"
+            )
+
+            if (RestoreShellContextMenuEntries $wslContextMenuPaths) {
+                Write-Host "WSL Linux shell context menu entries restored" -ForegroundColor "Green"
+                $Global:g_HasMadeChanges = $true
+            } else {
+                Write-Host "No hidden WSL Linux shell context menu entries found"
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+
+########################################
+# Personalisation
+##########
+
+
 Function Personalisation {
     [CmdletBinding()]
     param (
@@ -1206,6 +2159,9 @@ $m_WindowsCapabilitiesMenu  = Menu "Windows Capabilities Menu"
 $m_OptionalFeaturesMenu     = Menu "Optional Features Menu"
 $m_OneDriveMenu             = Menu "OneDrive Menu"
 $m_CustomisationMenu        = Menu "Customisation Menu"
+$m_PowerShellMenu           = Menu "PowerShell Menu"
+$m_WslMenu                  = Menu "WSL Menu"
+$m_UsbMenu                  = Menu "USB Wake Devices"
 
 # Main Menu
 $m_MainMenu.AddMenuItem((MenuItem "1" "Built-In Apps"           { $m_BuiltInAppsMenu.PrintMenu() }))
@@ -1243,12 +2199,32 @@ $m_OneDriveMenu.AddMenuItem((MenuItem "2" "Restore OneDrive"    { OneDriveRestor
 $m_OneDriveMenu.AddMenuItem((MenuItem "B" "Return to Main Menu" { Break }))
 
 # Customisation Menu
-$m_CustomisationMenu.AddMenuItem((MenuItem "1" "Disable Telemetry"          { DisableTelemetry }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "2" "List USB Wake Devices"      { ListUsbWakeDevices }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "3" "Disable USB Wake Devices"   { DisableUsbWakeDevices }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "4" "Apply Personalisation"      { Personalisation $true }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "5" "Revert Personalisation"     { Personalisation $false }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "B" "Return to Main Menu"        { Break }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "1" "Disable Telemetry"      { DisableTelemetry }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "2" "PowerShell"             { $m_PowerShellMenu.PrintMenu() }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "3" "WSL"                    { $m_WslMenu.PrintMenu() }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "4" "USB Wake Devices"       { $m_UsbMenu.PrintMenu() }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "5" "Apply Personalisation"  { Personalisation $true }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "6" "Revert Personalisation" { Personalisation $false }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "B" "Return to Main Menu"    { Break }))
+
+# PowerShell Menu
+$m_PowerShellMenu.AddMenuItem((MenuItem "1" "Install PowerShell 7"              { InstallPowerShell7 }))
+$m_PowerShellMenu.AddMenuItem((MenuItem "2" "Uninstall PowerShell 7"            { UninstallPowerShell7 }))
+$m_PowerShellMenu.AddMenuItem((MenuItem "3" "Hide Windows PowerShell 5.1"       { HideWindowsPowerShell51 }))
+$m_PowerShellMenu.AddMenuItem((MenuItem "4" "Restore Windows PowerShell 5.1"    { RestoreWindowsPowerShell51 }))
+$m_PowerShellMenu.AddMenuItem((MenuItem "B" "Return to Customisation Menu"      { Break }))
+
+# WSL Menu
+$m_WslMenu.AddMenuItem((MenuItem "1" "Install WSL"                              { InstallWsl }))
+$m_WslMenu.AddMenuItem((MenuItem "2" "Uninstall WSL"                            { UninstallWsl }))
+$m_WslMenu.AddMenuItem((MenuItem "3" "Hide WSL Linux Shell Context Menus"       { HideWslLinuxShellContextMenus }))
+$m_WslMenu.AddMenuItem((MenuItem "4" "Restore WSL Linux Shell Context Menus"    { RestoreWslLinuxShellContextMenus }))
+$m_WslMenu.AddMenuItem((MenuItem "B" "Return to Customisation Menu"             { Break }))
+
+# USB Wake Menu
+$m_UsbMenu.AddMenuItem((MenuItem "1" "List USB Wake Devices"        { ListUsbWakeDevices }))
+$m_UsbMenu.AddMenuItem((MenuItem "2" "Disable USB Wake Devices"     { DisableUsbWakeDevices }))
+$m_UsbMenu.AddMenuItem((MenuItem "B" "Return to Customisation Menu" { Break }))
 
 
 ################################################################################

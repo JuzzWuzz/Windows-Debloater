@@ -12,16 +12,14 @@ The main script, `Windows 11 Debloater.ps1`, opens a console menu with sections 
 - Windows capabilities
 - Windows optional features
 - OneDrive
-- Telemetry and personalisation registry settings
-
-There is also a standalone helper, `Disable-Wake-Devices.ps1`, which disables wake for devices currently reported by `powercfg /devicequery wake_armed`.
+- Telemetry, PowerShell, WSL, USB wake-device, and personalisation settings
 
 ## Requirements
 
 - Windows 11
 - PowerShell 5.1 or newer
 - Administrator rights
-- Internet access only for restore paths that use tools such as `winget`
+- Internet access for install/restore paths that use tools such as `winget` or `wsl`
 
 The main script attempts to self-elevate if it is not already running as Administrator.
 
@@ -67,7 +65,13 @@ The restore flow uses `winget` when available and reapplies the expected OneDriv
 
 ### Customisation
 
-Contains telemetry, wake-device, and personalisation actions.
+Contains telemetry, PowerShell, WSL, USB wake-device, and personalisation actions.
+
+The PowerShell submenu can install or uninstall PowerShell 7 using `winget`, and hide or restore Windows PowerShell 5.1 from common UI surfaces. The hide action removes Start Menu shortcuts, takes ownership of the three protected built-in Windows PowerShell context-menu keys under `HKEY_CLASSES_ROOT`, grants Administrators Full Control, hides those entries, removes the custom PowerShell 5.1 admin context-menu entries created by this project, and hides the Windows PowerShell profile in Windows Terminal where possible. The restore action recreates the basic Windows PowerShell Start Menu shortcuts, removes the context-menu hide marker, attempts to restore TrustedInstaller ownership on those protected context-menu keys, restores this project's custom PowerShell 5.1 admin context-menu entries, and unhides the Windows Terminal profile where possible.
+
+Windows PowerShell 5.1 itself is not uninstalled. It is a built-in Windows component and is left available for compatibility.
+
+The WSL submenu can install WSL using `wsl --install --no-launch`, uninstall the WSL package using `wsl --uninstall`, and hide or restore WSL/Linux shell context-menu entries such as `Open Linux shell here`. The uninstall option does not call `wsl --unregister`, so it does not intentionally delete Linux distribution files.
 
 The USB wake-device actions can list devices currently allowed to wake the computer and disable wake for those devices.
 
@@ -113,7 +117,6 @@ git diff --check
 ```text
 .
 |-- Windows 11 Debloater.ps1
-|-- Disable-Wake-Devices.ps1
 `-- RegFiles
     |-- Apply.reg
     |-- Revert.reg

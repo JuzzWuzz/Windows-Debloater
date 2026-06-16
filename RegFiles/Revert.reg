@@ -24,14 +24,6 @@ Windows Registry Editor Version 5.00
 [HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Shell Extensions\Blocked]
 "{e2bf9676-5f8f-435c-97eb-11607a5bedf7}"=-
 
-; Remove "Open PowerShell window here as administrator"
-[-HKEY_CLASSES_ROOT\Directory\Background\shell\PowerShellAsAdmin]
-[-HKEY_CLASSES_ROOT\Directory\shell\PowerShellAsAdmin]
-[-HKEY_CLASSES_ROOT\Drive\shell\PowerShellAsAdmin]
-[-HKEY_CLASSES_ROOT\LibraryFolder\Background\shell\PowerShellAsAdmin]
-[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System]
-"EnableLinkedConnections"=-
-
 ; Enable Sync Provider Notifications in File Explorer
 [HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
 "ShowSyncProviderNotifications"=dword:00000001

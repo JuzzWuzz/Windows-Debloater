@@ -12,13 +12,14 @@ Keep the tool practical, explicit, and understandable. It is not intended to be 
 - `RegFiles/Apply.reg`: applies the preferred registry customisations.
 - `RegFiles/Revert.reg`: applies inverse/default-style values where practical. This is not a backup restore.
 - `RegFiles/Telemetry_Disable.reg`: focused telemetry/privacy registry preset.
-- `Disable-Wake-Devices.ps1`: standalone helper for disabling wake-armed devices. Do not assume it is integrated into the main menu yet.
 
 ## Behavioral Decisions
 
 - Removing provisioned AppX packages is intentionally a strong delete-from-image action. Do not treat lack of automatic re-provision restore as a bug unless the user asks for that feature.
 - OneDrive restore is allowed to reinstall and set OneDrive up again. It does not need to exactly reverse every removal command.
 - Registry reverts should be documented as best-effort inverse presets, not as backups.
+- Do not remove Windows PowerShell 5.1 itself. Hiding/restoring shortcuts, context-menu entries, and Windows Terminal profiles is acceptable; deleting the built-in engine is not. The built-in PowerShell context-menu keys are protected and live at exact `HKEY_CLASSES_ROOT` paths; use the .NET Registry API for ownership/ACL/value changes because PowerShell provider ACL commands can fail against these keys. Restore should remove this script's `ProgrammaticAccessOnly` marker and make a best-effort attempt to put those protected keys back under TrustedInstaller ownership.
+- WSL/Linux shell context-menu cleanup should hide or restore shell verbs only. The WSL uninstall action uses `wsl --uninstall`; do not call `wsl --unregister` or delete distribution files unless explicitly requested.
 - Prefer clear menu labels for actions that have stronger side effects, especially provisioned package removal.
 
 ## Editing Guidelines
@@ -56,4 +57,4 @@ Do not run the debloating actions on the user's machine as a test unless the use
 
 ## Known Repo State
 
-The main script and registry files are the core tracked project. `Disable-Wake-Devices.ps1` may be worked on separately before it is integrated or committed.
+The main script and registry files are the core tracked project. USB wake-device handling is integrated into the Customisation menu.
