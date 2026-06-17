@@ -574,7 +574,7 @@ $g_Apps = @(
     [pscustomobject]@{ Name = "Microsoft.ScreenSketch"; DefaultRemove = $false }
     [pscustomobject]@{ Name = "Microsoft.StorePurchaseApp"; DefaultRemove = $false }
     [pscustomobject]@{ Name = "Microsoft.WindowsCalculator"; DefaultRemove = $false }
-    [pscustomobject]@{ Name = "Microsoft.WindowsNotepad"; DefaultRemove = $false }
+    [pscustomobject]@{ Name = "Microsoft.WindowsNotepad"; DefaultRemove = $true }
     [pscustomobject]@{ Name = "Microsoft.WindowsStore"; DefaultRemove = $false }
     [pscustomobject]@{ Name = "Microsoft.WindowsTerminal"; DefaultRemove = $false }
     # Xbox stuff is sometimes nice to keep
