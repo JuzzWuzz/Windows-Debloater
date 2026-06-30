@@ -75,7 +75,7 @@ Windows Terminal is treated as the preferred shell host and is kept by default w
 
 The Terminal settings action hides the Command Prompt profile and disables the close-all-tabs confirmation warning.
 
-The WSL submenu can install WSL using `wsl --install --no-launch`, uninstall the WSL package using `wsl --uninstall`, and hide or restore WSL/Linux shell context-menu entries such as `Open Linux shell here`. The uninstall option does not call `wsl --unregister`, so it does not intentionally delete Linux distribution files.
+The WSL submenu can install WSL with Debian using `wsl --install --distribution Debian --no-launch`, install or uninstall a hidden startup keepalive scheduled task, uninstall the WSL package using `wsl --uninstall`, and hide or restore WSL/Linux shell context-menu entries such as `Open Linux shell here`. The install option also ensures `%UserProfile%\.wslconfig` has a `[wsl2]` section with `networkingMode=mirrored` and `vmIdleTimeout=86400000`, preserving other existing config entries. The keepalive task runs as the current Windows user with `wsl.exe -d Debian --exec /bin/bash -lc "exec sleep infinity"` at startup, with no execution time limit. The uninstall option removes that keepalive task but does not call `wsl --unregister`, so it does not intentionally delete Linux distribution files.
 
 The USB wake-device actions can list devices currently allowed to wake the computer and disable wake for those devices.
 

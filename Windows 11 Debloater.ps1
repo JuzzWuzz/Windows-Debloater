@@ -2127,6 +2127,165 @@ Function WriteWslOutput {
     }
 }
 
+Function EnsureWslConfiguration {
+    $wslConfigPath = Join-Path $env:USERPROFILE ".wslconfig"
+    $wslSettings = [ordered]@{
+        networkingMode = "mirrored"
+        vmIdleTimeout = "86400000"
+    }
+
+    $lines = New-Object "System.Collections.Generic.List[string]"
+    if (Test-Path -LiteralPath $wslConfigPath -PathType Leaf) {
+        Get-Content -LiteralPath $wslConfigPath | ForEach-Object { [void]$lines.Add($_) }
+    }
+
+    $changed = $false
+    $wsl2SectionIndex = -1
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index] -match '^\s*\[wsl2\]\s*$') {
+            $wsl2SectionIndex = $index
+            break
+        }
+    }
+
+    if ($wsl2SectionIndex -eq -1) {
+        if (($lines.Count -gt 0) -and ($lines[$lines.Count - 1] -ne "")) {
+            [void]$lines.Add("")
+        }
+
+        [void]$lines.Add("[wsl2]")
+        foreach ($settingName in $wslSettings.Keys) {
+            [void]$lines.Add("$settingName=$($wslSettings[$settingName])")
+        }
+        $changed = $true
+    } else {
+        $wsl2SectionEnd = $lines.Count
+        for ($index = $wsl2SectionIndex + 1; $index -lt $lines.Count; $index++) {
+            if ($lines[$index] -match '^\s*\[[^\]]+\]\s*$') {
+                $wsl2SectionEnd = $index
+                break
+            }
+        }
+
+        foreach ($settingName in $wslSettings.Keys) {
+            $settingValue = $wslSettings[$settingName]
+            $settingLine = "$settingName=$settingValue"
+            $settingIndex = -1
+            $escapedSettingName = [regex]::Escape($settingName)
+
+            for ($index = $wsl2SectionIndex + 1; $index -lt $wsl2SectionEnd; $index++) {
+                if ($lines[$index] -match "^\s*$escapedSettingName\s*=") {
+                    $settingIndex = $index
+                    break
+                }
+            }
+
+            if ($settingIndex -eq -1) {
+                $lines.Insert($wsl2SectionEnd, $settingLine)
+                $wsl2SectionEnd++
+                $changed = $true
+            } elseif ($lines[$settingIndex] -ne $settingLine) {
+                $lines[$settingIndex] = $settingLine
+                $changed = $true
+            }
+        }
+    }
+
+    if ($changed) {
+        Set-Content -LiteralPath $wslConfigPath -Value $lines -Encoding ASCII
+        Write-Host $("WSL configuration updated at $wslConfigPath") -ForegroundColor "Green"
+    } else {
+        Write-Host "WSL configuration already contains the expected settings" -ForegroundColor "Green"
+    }
+
+    return $changed
+}
+
+Function GetWslKeepAliveTaskName {
+    return "WindowsDebloater WSL Debian Keepalive"
+}
+
+Function EnsureWslKeepAliveTask {
+    $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
+    if (!$wsl) {
+        Write-Host "wsl.exe not found, cannot create WSL keepalive task" -ForegroundColor Red
+        return $false
+    }
+
+    $taskName = GetWslKeepAliveTaskName
+    $taskUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $taskArguments = '-d Debian --exec /bin/bash -lc "exec sleep infinity"'
+
+    $action = New-ScheduledTaskAction -Execute $wsl.Source -Argument $taskArguments
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType S4U -RunLevel Limited
+    $settings = New-ScheduledTaskSettingsSet `
+        -AllowStartIfOnBatteries `
+        -DontStopIfGoingOnBatteries `
+        -ExecutionTimeLimit ([TimeSpan]::Zero) `
+        -Hidden `
+        -MultipleInstances IgnoreNew `
+        -RestartCount 3 `
+        -RestartInterval (New-TimeSpan -Minutes 1) `
+        -StartWhenAvailable
+
+    $existingTask = Get-ScheduledTask -TaskPath "\" -TaskName $taskName -ErrorAction SilentlyContinue
+
+    try {
+        Register-ScheduledTask `
+            -TaskPath "\" `
+            -TaskName $taskName `
+            -Action $action `
+            -Trigger $trigger `
+            -Principal $principal `
+            -Settings $settings `
+            -Description "Keeps Debian WSL running in the background after startup." `
+            -Force | Out-Null
+
+        if ($existingTask) {
+            Write-Host $("WSL keepalive task updated for $taskUser") -ForegroundColor "Green"
+        } else {
+            Write-Host $("WSL keepalive task created for $taskUser") -ForegroundColor "Green"
+        }
+
+        return $true
+    } catch {
+        Write-Host "Could not create WSL keepalive task" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
+        return $false
+    }
+}
+
+Function RemoveWslKeepAliveTask {
+    param(
+        [Parameter(Position = 0)]
+        [switch] $quiet
+    )
+
+    $taskName = GetWslKeepAliveTaskName
+    $existingTask = Get-ScheduledTask -TaskPath "\" -TaskName $taskName -ErrorAction SilentlyContinue
+    if (!$existingTask) {
+        if (!$quiet) {
+            Write-Host "WSL keepalive task was not found"
+        }
+
+        return $false
+    }
+
+    try {
+        Unregister-ScheduledTask -TaskPath "\" -TaskName $taskName -Confirm:$false
+        if (!$quiet) {
+            Write-Host "WSL keepalive task removed" -ForegroundColor "Green"
+        }
+
+        return $true
+    } catch {
+        Write-Host "Could not remove WSL keepalive task" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
+        return $false
+    }
+}
+
 Function HideShellContextMenuEntries {
     param(
         [Parameter(Position = 0, Mandatory)]
@@ -2173,12 +2332,19 @@ Function InstallWsl {
         if ($g_NerfScript) {
             Write-Host "Script is nerfed, skipping"
         } else {
+            $wslConfigChanged = EnsureWslConfiguration
             $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
             if ($wsl) {
-                Write-Host "Installing WSL..."
-                $result = InvokeWsl @("--install", "--no-launch")
+                if ($wslConfigChanged) {
+                    Write-Host "Shutting down WSL so configuration is picked up on next launch..."
+                    InvokeWsl @("--shutdown") | Out-Null
+                }
+
+                Write-Host "Installing WSL with Debian..."
+                $result = InvokeWsl @("--install", "--distribution", "Debian", "--no-launch")
                 if ($result.ExitCode -eq 0) {
                     Write-Host "WSL install command completed" -ForegroundColor "Green"
+                    EnsureWslKeepAliveTask | Out-Null
                     Write-Host "A reboot may be required before WSL is ready" -ForegroundColor Yellow
                     $Global:g_HasMadeChanges = $true
                 } else {
@@ -2187,6 +2353,10 @@ Function InstallWsl {
                 }
             } else {
                 Write-Host "wsl.exe not found, cannot install WSL automatically" -ForegroundColor Red
+            }
+
+            if ($wslConfigChanged) {
+                $Global:g_HasMadeChanges = $true
             }
         }
 
@@ -2212,6 +2382,7 @@ Function UninstallWsl {
                 $result = InvokeWsl @("--uninstall")
                 if ($result.ExitCode -eq 0) {
                     Write-Host "WSL uninstall command completed" -ForegroundColor "Green"
+                    RemoveWslKeepAliveTask -quiet | Out-Null
                     Write-Host "This option does not unregister Linux distributions or delete distro files" -ForegroundColor Yellow
                     $Global:g_HasMadeChanges = $true
                 } else {
@@ -2221,6 +2392,38 @@ Function UninstallWsl {
             } else {
                 Write-Host "wsl.exe not found, cannot uninstall WSL automatically" -ForegroundColor Red
             }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function InstallWslKeepAliveTask {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "Install WSL Keepalive Task" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            EnsureWslKeepAliveTask | Out-Null
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function UninstallWslKeepAliveTask {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "Uninstall WSL Keepalive Task" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            RemoveWslKeepAliveTask | Out-Null
         }
 
         AwaitKeyPress
@@ -2399,8 +2602,10 @@ $m_PowerShellMenu.AddMenuItem((MenuItem "B" "Return to Customisation Menu"      
 # WSL Menu
 $m_WslMenu.AddMenuItem((MenuItem "1" "Install WSL"                              { InstallWsl }))
 $m_WslMenu.AddMenuItem((MenuItem "2" "Uninstall WSL"                            { UninstallWsl }))
-$m_WslMenu.AddMenuItem((MenuItem "3" "Hide WSL Linux Shell Context Menus"       { HideWslLinuxShellContextMenus }))
-$m_WslMenu.AddMenuItem((MenuItem "4" "Restore WSL Linux Shell Context Menus"    { RestoreWslLinuxShellContextMenus }))
+$m_WslMenu.AddMenuItem((MenuItem "3" "Install WSL Keepalive Task"               { InstallWslKeepAliveTask }))
+$m_WslMenu.AddMenuItem((MenuItem "4" "Uninstall WSL Keepalive Task"             { UninstallWslKeepAliveTask }))
+$m_WslMenu.AddMenuItem((MenuItem "5" "Hide WSL Linux Shell Context Menus"       { HideWslLinuxShellContextMenus }))
+$m_WslMenu.AddMenuItem((MenuItem "6" "Restore WSL Linux Shell Context Menus"    { RestoreWslLinuxShellContextMenus }))
 $m_WslMenu.AddMenuItem((MenuItem "B" "Return to Customisation Menu"             { Break }))
 
 # USB Wake Menu
