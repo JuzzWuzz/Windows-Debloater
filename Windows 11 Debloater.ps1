@@ -2488,6 +2488,622 @@ Function RestoreWslLinuxShellContextMenus {
 
 
 ########################################
+# SSH Server
+##########
+
+
+Function GetSshServerCapabilityName {
+    return "OpenSSH.Server~~~~0.0.1.0"
+}
+
+Function GetSshServerFirewallRuleName {
+    return "Windows-SSH-Server"
+}
+
+Function GetSshServerDirectory {
+    return (Join-Path $env:ProgramData "ssh")
+}
+
+Function GetSshServerConfigPath {
+    return (Join-Path (GetSshServerDirectory) "sshd_config")
+}
+
+Function GetSshServerAuthorizedKeysFile {
+    return (Join-Path (GetSshServerDirectory) "administrators_authorized_keys")
+}
+
+Function InvokeDism {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String[]] $arguments
+    )
+
+    $output = @(& dism.exe @arguments 2>&1 | ForEach-Object { $_.ToString() })
+    return [pscustomobject]@{
+        ExitCode = $LASTEXITCODE
+        Output = $output
+    }
+}
+
+Function WriteDismOutput {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [psobject] $dismResult
+    )
+
+    if ($dismResult.Output.Count -gt 0) {
+        Write-Host ""
+        Write-Host "DISM output:"
+        $dismResult.Output | ForEach-Object { Write-Host $_ }
+    }
+}
+
+Function GetSshServerCapabilityState {
+    $capabilityName = GetSshServerCapabilityName
+
+    try {
+        $capability = Get-WindowsCapability -Online -Name $capabilityName -ErrorAction Stop
+        if ($capability) {
+            return $capability.State.ToString()
+        }
+    } catch {
+        $null
+    }
+
+    $dism = Get-Command dism.exe -ErrorAction SilentlyContinue
+    if (!$dism) {
+        return $null
+    }
+
+    $result = InvokeDism @("/Online", "/Get-CapabilityInfo", "/CapabilityName:$capabilityName")
+    if ($result.ExitCode -ne 0) {
+        return $null
+    }
+
+    $stateLine = $result.Output | Where-Object { $_ -match "^\s*State\s*:" } | Select-Object -First 1
+    if ($stateLine -and $stateLine -match ":\s*(?<state>.+?)\s*$") {
+        return $matches["state"].Trim()
+    }
+
+    return $null
+}
+
+Function EnsureSshServerCapability {
+    $capabilityName = GetSshServerCapabilityName
+    $state = GetSshServerCapabilityState
+
+    if ($state -eq "Installed") {
+        Write-Host "OpenSSH Server capability is already installed" -ForegroundColor "Green"
+        return $true
+    }
+
+    Write-Host "Installing OpenSSH Server capability..."
+    try {
+        Add-WindowsCapability -Online -Name $capabilityName -ErrorAction Stop | Out-Null
+    } catch {
+        Write-Host "Add-WindowsCapability failed, trying DISM..." -ForegroundColor Yellow
+        Write-Host $_.Exception.Message -ForegroundColor Yellow
+
+        $result = InvokeDism @("/Online", "/Add-Capability", "/CapabilityName:$capabilityName")
+        if ($result.ExitCode -ne 0) {
+            Write-Host $("OpenSSH Server capability installation failed, DISM exited with code $($result.ExitCode)") -ForegroundColor Red
+            WriteDismOutput $result
+            return $false
+        }
+    }
+
+    $service = Get-Service -Name sshd -ErrorAction SilentlyContinue
+    if ($service) {
+        Write-Host "OpenSSH Server capability installed" -ForegroundColor "Green"
+        return $true
+    }
+
+    Write-Host "OpenSSH Server capability install completed, but sshd service was not found" -ForegroundColor Red
+    return $false
+}
+
+Function RemoveSshServerCapability {
+    $capabilityName = GetSshServerCapabilityName
+    $state = GetSshServerCapabilityState
+    $service = Get-Service -Name sshd -ErrorAction SilentlyContinue
+
+    if ($state -ne "Installed" -and !$service) {
+        Write-Host "OpenSSH Server capability is not installed"
+        return $true
+    }
+
+    if ($service -and $service.Status -ne "Stopped") {
+        Write-Host "Stopping SSH Server..."
+        Stop-Service -Name sshd -Force -ErrorAction SilentlyContinue
+    }
+
+    Write-Host "Removing OpenSSH Server capability..."
+    try {
+        Remove-WindowsCapability -Online -Name $capabilityName -ErrorAction Stop | Out-Null
+    } catch {
+        Write-Host "Remove-WindowsCapability failed, trying DISM..." -ForegroundColor Yellow
+        Write-Host $_.Exception.Message -ForegroundColor Yellow
+
+        $result = InvokeDism @("/Online", "/Remove-Capability", "/CapabilityName:$capabilityName")
+        if ($result.ExitCode -ne 0) {
+            Write-Host $("OpenSSH Server capability removal failed, DISM exited with code $($result.ExitCode)") -ForegroundColor Red
+            WriteDismOutput $result
+            return $false
+        }
+    }
+
+    Write-Host "OpenSSH Server capability removed" -ForegroundColor "Green"
+    return $true
+}
+
+Function ReadSshServerPort {
+    param(
+        [Parameter(Position = 0)]
+        [Int] $defaultPort = 22
+    )
+
+    do {
+        $portInput = Read-Host -Prompt "SSH port [$defaultPort]"
+        if ([string]::IsNullOrWhiteSpace($portInput)) {
+            return $defaultPort
+        }
+
+        $port = 0
+        $isValidPort = [Int]::TryParse($portInput, [ref]$port) -and $port -ge 1 -and $port -le 65535
+        if (!$isValidPort) {
+            Write-Host "Please enter a port number between 1 and 65535" -ForegroundColor Yellow
+        }
+    } while (!$isValidPort)
+
+    return $port
+}
+
+Function GetSshServerPowerShell5Path {
+    return "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
+}
+
+Function GetSshServerPowerShell7Path {
+    $shell = "C:\Program Files\PowerShell\7\pwsh.exe"
+    if (Test-Path -LiteralPath $shell) {
+        return $shell
+    }
+
+    try {
+        $package = Get-AppxPackage -Name "Microsoft.PowerShell" -ErrorAction SilentlyContinue |
+            Sort-Object -Property Version -Descending |
+            Select-Object -First 1
+
+        if ($package -and $package.InstallLocation) {
+            $shell = Join-Path $package.InstallLocation "pwsh.exe"
+            if (Test-Path -LiteralPath $shell) {
+                return $shell
+            }
+        }
+    } catch {
+        $null
+    }
+
+    $commands = @(Get-Command pwsh.exe -All -ErrorAction SilentlyContinue | Where-Object { $_.CommandType -eq "Application" })
+    foreach ($command in $commands) {
+        if ([string]::IsNullOrWhiteSpace($command.Source)) {
+            continue
+        }
+
+        if ($command.Source -like "*\AppData\Local\Microsoft\WindowsApps\pwsh.exe") {
+            continue
+        }
+
+        if (Test-Path -LiteralPath $command.Source) {
+            return $command.Source
+        }
+    }
+
+    return $null
+}
+
+Function ReadSshServerShell {
+    $powerShell5Path = GetSshServerPowerShell5Path
+    $powerShell7Path = GetSshServerPowerShell7Path
+
+    if (!$powerShell7Path) {
+        Write-Host "PowerShell 7 was not found, using Windows PowerShell 5.1"
+        return $powerShell5Path
+    }
+
+    do {
+        $shellInput = Read-Host -Prompt "PowerShell version for SSH shell [7] (5/7)"
+        if ([string]::IsNullOrWhiteSpace($shellInput)) {
+            return $powerShell7Path
+        }
+
+        if ($shellInput -eq "5") {
+            return $powerShell5Path
+        }
+
+        if ($shellInput -eq "7") {
+            return $powerShell7Path
+        }
+
+        Write-Host "Please enter 5 or 7" -ForegroundColor Yellow
+    } while ($true)
+}
+
+Function InsertSshdConfigLine {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [String[]] $lines,
+
+        [Parameter(Position = 1, Mandatory)]
+        [Int] $index,
+
+        [Parameter(Position = 2, Mandatory)]
+        [String] $line
+    )
+
+    if ($lines.Count -eq 0) {
+        return @($line)
+    }
+
+    if ($index -le 0) {
+        return @($line) + $lines
+    }
+
+    if ($index -ge $lines.Count) {
+        return $lines + @($line)
+    }
+
+    return @($lines[0..($index - 1)]) + @($line) + @($lines[$index..($lines.Count - 1)])
+}
+
+Function GetSshdGlobalConfigEndIndex {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [String[]] $lines
+    )
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match "^\s*Match\s+") {
+            return $i
+        }
+    }
+
+    return $lines.Count
+}
+
+Function SetSshdConfigDirective {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [String[]] $lines,
+
+        [Parameter(Position = 1, Mandatory)]
+        [String] $name,
+
+        [Parameter(Position = 2, Mandatory)]
+        [String] $value
+    )
+
+    $targetLine = "$name $value"
+    $activePattern = "^\s*$([Regex]::Escape($name))\s+"
+    $commentedPattern = "^\s*#\s*$([Regex]::Escape($name))\s+"
+    $globalEndIndex = GetSshdGlobalConfigEndIndex $lines
+    $targetSet = $false
+
+    for ($i = 0; $i -lt $globalEndIndex; $i++) {
+        if ($lines[$i] -match $activePattern) {
+            if (!$targetSet) {
+                $lines[$i] = $targetLine
+                $targetSet = $true
+            } else {
+                $lines[$i] = "# " + $lines[$i]
+            }
+        } elseif (!$targetSet -and $lines[$i] -match $commentedPattern) {
+            $lines[$i] = $targetLine
+            $targetSet = $true
+        }
+    }
+
+    if (!$targetSet) {
+        $lines = @(InsertSshdConfigLine $lines $globalEndIndex $targetLine)
+    }
+
+    return $lines
+}
+
+Function SetSshdAdministratorsAuthorizedKeysConfig {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [AllowEmptyCollection()]
+        [AllowEmptyString()]
+        [String[]] $lines
+    )
+
+    $matchPattern = "^\s*Match\s+Group\s+administrators\s*$"
+    $authorizedKeysPattern = "^\s*#?\s*AuthorizedKeysFile\s+"
+    $targetLine = "       AuthorizedKeysFile __PROGRAMDATA__/ssh/administrators_authorized_keys"
+
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match $matchPattern) {
+            $blockEndIndex = $lines.Count
+            for ($j = $i + 1; $j -lt $lines.Count; $j++) {
+                if ($lines[$j] -match "^\s*Match\s+") {
+                    $blockEndIndex = $j
+                    break
+                }
+            }
+
+            for ($j = $i + 1; $j -lt $blockEndIndex; $j++) {
+                if ($lines[$j] -match $authorizedKeysPattern) {
+                    $lines[$j] = $targetLine
+                    return $lines
+                }
+            }
+
+            return @(InsertSshdConfigLine $lines ($i + 1) $targetLine)
+        }
+    }
+
+    if ($lines.Count -gt 0 -and ![string]::IsNullOrWhiteSpace($lines[$lines.Count - 1])) {
+        $lines += ""
+    }
+
+    $lines += "Match Group administrators"
+    $lines += $targetLine
+
+    return $lines
+}
+
+Function SetSshServerConfig {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [Int] $port
+    )
+
+    $sshDirectory = GetSshServerDirectory
+    $configPath = GetSshServerConfigPath
+
+    New-Item -ItemType Directory -Force $sshDirectory | Out-Null
+    if (!(Test-Path -LiteralPath $configPath)) {
+        New-Item -ItemType File -Force $configPath | Out-Null
+    }
+
+    $lines = @(Get-Content -LiteralPath $configPath)
+    $lines = @(SetSshdConfigDirective $lines "Port" $port.ToString())
+    $lines = @(SetSshdConfigDirective $lines "PasswordAuthentication" "no")
+    $lines = @(SetSshdConfigDirective $lines "PermitEmptyPasswords" "no")
+    $lines = @(SetSshdConfigDirective $lines "PubkeyAuthentication" "yes")
+    $lines = @(SetSshdAdministratorsAuthorizedKeysConfig $lines)
+
+    Set-Content -LiteralPath $configPath -Value $lines -Encoding ascii
+    Write-Host $("SSH Server config updated at $configPath") -ForegroundColor "Green"
+}
+
+Function InitializeSshServerServiceForConfig {
+    $service = Get-Service -Name sshd -ErrorAction SilentlyContinue
+    if (!$service) {
+        Write-Host "sshd service was not found" -ForegroundColor Red
+        return $false
+    }
+
+    Write-Host "Setting SSH Server to start automatically..."
+    Set-Service -Name sshd -StartupType Automatic
+
+    Write-Host "Starting SSH Server to generate base config..."
+    Start-Service -Name sshd
+    Start-Sleep -Seconds 2
+
+    Write-Host "Stopping SSH Server so config can be updated..."
+    Stop-Service -Name sshd
+
+    return $true
+}
+
+Function RemoveSshServerWindowsFirewallRules {
+    $defaultRules = @(Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object {
+        $_.DisplayName -like "OpenSSH SSH*" -or
+        $_.Name -like "OpenSSH SSH*" -or
+        $_.Name -eq "OpenSSH-Server-In-TCP"
+    })
+
+    foreach ($rule in $defaultRules) {
+        Remove-NetFirewallRule -Name $rule.Name -ErrorAction SilentlyContinue
+    }
+
+    return $defaultRules.Count
+}
+
+Function EnsureSshServerFirewallRule {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [Int] $port
+    )
+
+    $ruleName = GetSshServerFirewallRuleName
+    $removedDefaultRules = RemoveSshServerWindowsFirewallRules
+
+    Remove-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue
+    New-NetFirewallRule `
+        -Name $ruleName `
+        -DisplayName "Windows SSH Server" `
+        -Direction Inbound `
+        -Action Allow `
+        -Protocol TCP `
+        -LocalPort $port | Out-Null
+
+    if ($removedDefaultRules -gt 0) {
+        Write-Host $("Removed $removedDefaultRules default OpenSSH firewall rule(s)")
+    }
+    Write-Host $("Windows SSH Server firewall rule set to TCP port $port") -ForegroundColor "Green"
+}
+
+Function RemoveSshServerFirewallRules {
+    $ruleName = GetSshServerFirewallRuleName
+    $removedDefaultRules = RemoveSshServerWindowsFirewallRules
+    $scriptRule = Get-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue
+
+    if ($scriptRule) {
+        Remove-NetFirewallRule -Name $ruleName -ErrorAction SilentlyContinue
+        Write-Host "Windows SSH Server firewall rule removed" -ForegroundColor "Green"
+    }
+
+    if ($removedDefaultRules -gt 0) {
+        Write-Host $("Removed $removedDefaultRules default OpenSSH firewall rule(s)")
+    }
+}
+
+Function EnsureSshServerAuthorizedKeysFile {
+    $keyFile = GetSshServerAuthorizedKeysFile
+    $sshDirectory = Split-Path -Parent $keyFile
+
+    New-Item -ItemType Directory -Force $sshDirectory | Out-Null
+    if (!(Test-Path -LiteralPath $keyFile)) {
+        New-Item -ItemType File -Force $keyFile | Out-Null
+    }
+
+    & icacls.exe $keyFile /inheritance:r /grant "Administrators:F" /grant "SYSTEM:F" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Could not set authorized keys file permissions" -ForegroundColor Yellow
+        return $false
+    }
+
+    Write-Host $("Authorized keys file ready at $keyFile") -ForegroundColor "Green"
+    return $true
+}
+
+Function SetSshServerDefaultShell {
+    param(
+        [Parameter(Position = 0)]
+        [String] $shell = $null
+    )
+
+    New-Item -Path "HKLM:\SOFTWARE\OpenSSH" -Force | Out-Null
+
+    if ([string]::IsNullOrWhiteSpace($shell)) {
+        $shell = GetSshServerPowerShell7Path
+        if (!$shell) {
+            $shell = GetSshServerPowerShell5Path
+        }
+    }
+
+    New-ItemProperty `
+        -Path "HKLM:\SOFTWARE\OpenSSH" `
+        -Name "DefaultShell" `
+        -Value $shell `
+        -PropertyType String `
+        -Force | Out-Null
+
+    Write-Host $("SSH Server default shell set to $shell") -ForegroundColor "Green"
+}
+
+Function RemoveSshServerDefaultShell {
+    if (Test-Path "HKLM:\SOFTWARE\OpenSSH") {
+        Remove-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name "DefaultShell" -ErrorAction SilentlyContinue
+        Write-Host "SSH Server default shell setting removed" -ForegroundColor "Green"
+    }
+}
+
+Function InstallSshServer {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "Install SSH Server" -isolateBlock $true -clearScreen $true
+
+        $port = ReadSshServerPort 22
+        $shell = ReadSshServerShell
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            if (EnsureSshServerCapability) {
+                if (InitializeSshServerServiceForConfig) {
+                    SetSshServerConfig $port
+                    EnsureSshServerFirewallRule $port
+                    EnsureSshServerAuthorizedKeysFile | Out-Null
+                    SetSshServerDefaultShell $shell
+
+                    Write-Host "Starting SSH Server..."
+                    Start-Service -Name sshd
+
+                    Write-Host "SSH Server installed and configured" -ForegroundColor "Green"
+                    $Global:g_HasMadeChanges = $true
+                }
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function OpenSshServerAuthorizedKeysFile {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "Open Authorized Keys File" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            EnsureSshServerAuthorizedKeysFile | Out-Null
+            Start-Process -FilePath "notepad.exe" -ArgumentList "`"$(GetSshServerAuthorizedKeysFile)`""
+            Write-Host "Authorized keys file opened in Notepad" -ForegroundColor "Green"
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function RestartSshServer {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "Restart SSH Server" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            $service = Get-Service -Name sshd -ErrorAction SilentlyContinue
+            if (!$service) {
+                Write-Host "SSH Server is not installed" -ForegroundColor Red
+            } else {
+                Restart-Service -Name sshd
+                Write-Host "SSH Server restarted" -ForegroundColor "Green"
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function RemoveSshServer {
+    [CmdletBinding()]
+    param ()
+    Process {
+        PrintBlock "Remove SSH Server" -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            RemoveSshServerFirewallRules
+            RemoveSshServerDefaultShell
+
+            if (RemoveSshServerCapability) {
+                Write-Host "SSH Server removed" -ForegroundColor "Green"
+                Write-Host "Existing SSH config and authorized keys files were left in place"
+                $Global:g_HasMadeChanges = $true
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+
+########################################
 # Personalisation
 ##########
 
@@ -2545,6 +3161,7 @@ $m_OneDriveMenu             = Menu "OneDrive Menu"
 $m_CustomisationMenu        = Menu "Customisation Menu"
 $m_PowerShellMenu           = Menu "PowerShell Menu"
 $m_WslMenu                  = Menu "WSL Menu"
+$m_SshServerMenu            = Menu "SSH Server Menu"
 $m_UsbMenu                  = Menu "USB Wake Devices"
 
 # Main Menu
@@ -2586,10 +3203,11 @@ $m_OneDriveMenu.AddMenuItem((MenuItem "B" "Return to Main Menu" { Break }))
 $m_CustomisationMenu.AddMenuItem((MenuItem "1" "Disable Telemetry"      { DisableTelemetry }))
 $m_CustomisationMenu.AddMenuItem((MenuItem "2" "PowerShell"             { $m_PowerShellMenu.PrintMenu() }))
 $m_CustomisationMenu.AddMenuItem((MenuItem "3" "WSL"                    { $m_WslMenu.PrintMenu() }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "4" "USB Wake Devices"       { $m_UsbMenu.PrintMenu() }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "5" "Apply Terminal Settings" { ApplyTerminalSettings }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "6" "Apply Personalisation"   { Personalisation $true }))
-$m_CustomisationMenu.AddMenuItem((MenuItem "7" "Revert Personalisation"  { Personalisation $false }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "4" "SSH Server"             { $m_SshServerMenu.PrintMenu() }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "5" "USB Wake Devices"       { $m_UsbMenu.PrintMenu() }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "6" "Apply Terminal Settings" { ApplyTerminalSettings }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "7" "Apply Personalisation"   { Personalisation $true }))
+$m_CustomisationMenu.AddMenuItem((MenuItem "8" "Revert Personalisation"  { Personalisation $false }))
 $m_CustomisationMenu.AddMenuItem((MenuItem "B" "Return to Main Menu"    { Break }))
 
 # PowerShell Menu
@@ -2607,6 +3225,13 @@ $m_WslMenu.AddMenuItem((MenuItem "4" "Uninstall WSL Keepalive Task"             
 $m_WslMenu.AddMenuItem((MenuItem "5" "Hide WSL Linux Shell Context Menus"       { HideWslLinuxShellContextMenus }))
 $m_WslMenu.AddMenuItem((MenuItem "6" "Restore WSL Linux Shell Context Menus"    { RestoreWslLinuxShellContextMenus }))
 $m_WslMenu.AddMenuItem((MenuItem "B" "Return to Customisation Menu"             { Break }))
+
+# SSH Server Menu
+$m_SshServerMenu.AddMenuItem((MenuItem "1" "Install SSH Server"             { InstallSshServer }))
+$m_SshServerMenu.AddMenuItem((MenuItem "2" "Open Authorized Keys File"      { OpenSshServerAuthorizedKeysFile }))
+$m_SshServerMenu.AddMenuItem((MenuItem "3" "Restart SSH Server"             { RestartSshServer }))
+$m_SshServerMenu.AddMenuItem((MenuItem "4" "Remove SSH Server"              { RemoveSshServer }))
+$m_SshServerMenu.AddMenuItem((MenuItem "B" "Return to Customisation Menu"   { Break }))
 
 # USB Wake Menu
 $m_UsbMenu.AddMenuItem((MenuItem "1" "List USB Wake Devices"        { ListUsbWakeDevices }))
