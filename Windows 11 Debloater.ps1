@@ -337,7 +337,10 @@ Function SelectFromList {
         [String] $actionName = "continue",
 
         [Parameter(Position = 3)]
-        $defaultSelected = $null
+        $defaultSelected = $null,
+
+        [Parameter(Position = 4)]
+        [Bool] $allowEmptySelection = $false
     )
 
     $selected = New-Object 'bool[]' $items.Count
@@ -447,13 +450,13 @@ Function SelectFromList {
                     }
                 }
 
-                if ($selectedItems.Count -eq 0) {
+                if ($selectedItems.Count -eq 0 -and !$allowEmptySelection) {
                     $invalidOption = $true
                     & $drawStatus $invalidOption
                     Continue
                 }
 
-                return $selectedItems
+                return ,$selectedItems
             }
             "Escape" {
                 return $null
@@ -509,13 +512,13 @@ Function SelectFromList {
                     }
                 }
 
-                if ($selectedItems.Count -eq 0) {
+                if ($selectedItems.Count -eq 0 -and !$allowEmptySelection) {
                     $invalidOption = $true
                     & $drawStatus $invalidOption
                     Continue
                 }
 
-                return $selectedItems
+                return ,$selectedItems
             }
             "B" {
                 return $null
@@ -2127,6 +2130,102 @@ Function WriteWslOutput {
     }
 }
 
+Function GetWslDistributionName {
+    return "Debian"
+}
+
+Function TestWslDistributionInstalled {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [String] $distributionName
+    )
+
+    $result = InvokeWsl @("--list", "--quiet")
+    if ($result.ExitCode -ne 0) {
+        return $false
+    }
+
+    $distributionNames = @($result.Output |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ -ne "" })
+
+    return (($distributionNames | Where-Object { $_ -ieq $distributionName } | Select-Object -First 1) -ne $null)
+}
+
+Function GetWslFirewallRules {
+    return @(
+        [pscustomobject]@{ Name = "WSL SSH"; Port = 22 }
+        [pscustomobject]@{ Name = "WSL HTTP"; Port = 80 }
+        [pscustomobject]@{ Name = "WSL HTTPS"; Port = 443 }
+    )
+}
+
+Function GetWslFirewallRuleLabel {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [psobject] $rule
+    )
+
+    return "$($rule.Name) (TCP $($rule.Port))"
+}
+
+Function SelectWslFirewallRules {
+    $rules = @(GetWslFirewallRules)
+    $ruleLabels = @($rules | ForEach-Object { GetWslFirewallRuleLabel $_ })
+    $defaultSelected = @($rules | ForEach-Object { $true })
+    $selectedRuleLabels = SelectFromList "WSL Firewall Rules" $ruleLabels "create" $defaultSelected $true
+
+    if ($null -eq $selectedRuleLabels) {
+        return $null
+    }
+
+    $selectedRuleLabels = @($selectedRuleLabels)
+    return ,@($rules | Where-Object { $selectedRuleLabels -contains (GetWslFirewallRuleLabel $_) })
+}
+
+Function RemoveWslFirewallRules {
+    $removedCount = 0
+    foreach ($rule in @(GetWslFirewallRules)) {
+        $existingRule = Get-NetFirewallRule -Name $rule.Name -ErrorAction SilentlyContinue
+        if ($existingRule) {
+            Remove-NetFirewallRule -Name $rule.Name -ErrorAction SilentlyContinue
+            $removedCount++
+        }
+    }
+
+    return $removedCount
+}
+
+Function EnsureWslFirewallRules {
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [AllowEmptyCollection()]
+        [psobject[]] $rules
+    )
+
+    $removedCount = RemoveWslFirewallRules
+
+    foreach ($rule in $rules) {
+        New-NetFirewallRule `
+            -Name $rule.Name `
+            -DisplayName $rule.Name `
+            -Direction Inbound `
+            -Action Allow `
+            -Protocol TCP `
+            -LocalPort $rule.Port | Out-Null
+
+        Write-Host $("WSL firewall rule created: $($rule.Name) TCP $($rule.Port)") -ForegroundColor "Green"
+    }
+
+    if ($rules.Count -eq 0) {
+        Write-Host "No WSL firewall rules selected"
+    } elseif ($removedCount -gt 0) {
+        Write-Host $("Updated $($rules.Count) WSL firewall rule(s)")
+    }
+
+    return $true
+}
+
 Function EnsureWslConfiguration {
     $wslConfigPath = Join-Path $env:USERPROFILE ".wslconfig"
     $wslSettings = [ordered]@{
@@ -2202,7 +2301,7 @@ Function EnsureWslConfiguration {
 }
 
 Function GetWslKeepAliveTaskName {
-    return "WindowsDebloater WSL Debian Keepalive"
+    return $("WindowsDebloater WSL $(GetWslDistributionName) Keepalive")
 }
 
 Function EnsureWslKeepAliveTask {
@@ -2214,7 +2313,7 @@ Function EnsureWslKeepAliveTask {
 
     $taskName = GetWslKeepAliveTaskName
     $taskUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-    $taskArguments = '-d Debian --exec /bin/bash -lc "exec sleep infinity"'
+    $taskArguments = "-d $(GetWslDistributionName) --exec /bin/bash -lc `"exec sleep infinity`""
 
     $action = New-ScheduledTaskAction -Execute $wsl.Source -Argument $taskArguments
     $trigger = New-ScheduledTaskTrigger -AtStartup
@@ -2239,7 +2338,7 @@ Function EnsureWslKeepAliveTask {
             -Trigger $trigger `
             -Principal $principal `
             -Settings $settings `
-            -Description "Keeps Debian WSL running in the background after startup." `
+            -Description $("Keeps $(GetWslDistributionName) WSL running in the background after startup.") `
             -Force | Out-Null
 
         if ($existingTask) {
@@ -2327,6 +2426,12 @@ Function InstallWsl {
     [CmdletBinding()]
     param ()
     Process {
+        $selectedFirewallRules = SelectWslFirewallRules
+        if ($null -eq $selectedFirewallRules) {
+            return
+        }
+        $selectedFirewallRules = @($selectedFirewallRules)
+
         PrintBlock "WSL Installation" -isolateBlock $true -clearScreen $true
 
         if ($g_NerfScript) {
@@ -2340,16 +2445,35 @@ Function InstallWsl {
                     InvokeWsl @("--shutdown") | Out-Null
                 }
 
-                Write-Host "Installing WSL with Debian..."
-                $result = InvokeWsl @("--install", "--distribution", "Debian", "--no-launch")
-                if ($result.ExitCode -eq 0) {
-                    Write-Host "WSL install command completed" -ForegroundColor "Green"
-                    EnsureWslKeepAliveTask | Out-Null
-                    Write-Host "A reboot may be required before WSL is ready" -ForegroundColor Yellow
-                    $Global:g_HasMadeChanges = $true
+                $distributionName = GetWslDistributionName
+                $wslReady = $false
+                $freshInstall = $false
+                if (TestWslDistributionInstalled $distributionName) {
+                    Write-Host $("WSL distribution $distributionName is already installed") -ForegroundColor "Green"
+                    $wslReady = $true
                 } else {
-                    Write-Host $("WSL installation failed, wsl exited with code $($result.ExitCode)") -ForegroundColor Red
-                    WriteWslOutput $result
+                    Write-Host $("Installing WSL with $distributionName...")
+                    $result = InvokeWsl @("--install", "--distribution", $distributionName, "--no-launch")
+                    if ($result.ExitCode -eq 0) {
+                        Write-Host "WSL install command completed" -ForegroundColor "Green"
+                        $wslReady = $true
+                        $freshInstall = $true
+                    } elseif (($result.Output -join "`n") -match "A distribution with the supplied name already exist") {
+                        Write-Host $("WSL distribution $distributionName is already installed") -ForegroundColor "Green"
+                        $wslReady = $true
+                    } else {
+                        Write-Host $("WSL installation failed, wsl exited with code $($result.ExitCode)") -ForegroundColor Red
+                        WriteWslOutput $result
+                    }
+                }
+
+                if ($wslReady) {
+                    EnsureWslKeepAliveTask | Out-Null
+                    EnsureWslFirewallRules $selectedFirewallRules | Out-Null
+                    if ($freshInstall) {
+                        Write-Host "A reboot may be required before WSL is ready" -ForegroundColor Yellow
+                    }
+                    $Global:g_HasMadeChanges = $true
                 }
             } else {
                 Write-Host "wsl.exe not found, cannot install WSL automatically" -ForegroundColor Red
@@ -2383,6 +2507,7 @@ Function UninstallWsl {
                 if ($result.ExitCode -eq 0) {
                     Write-Host "WSL uninstall command completed" -ForegroundColor "Green"
                     RemoveWslKeepAliveTask -quiet | Out-Null
+                    RemoveWslFirewallRules | Out-Null
                     Write-Host "This option does not unregister Linux distributions or delete distro files" -ForegroundColor Yellow
                     $Global:g_HasMadeChanges = $true
                 } else {
