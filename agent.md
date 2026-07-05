@@ -25,6 +25,7 @@ Keep the tool practical, explicit, and understandable. It is not intended to be 
 - Removing provisioned AppX packages is intentionally a strong delete-from-image action. Do not treat lack of automatic re-provision restore as a bug unless the user asks for that feature.
 - OneDrive restore is allowed to reinstall and set OneDrive up again. It does not need to exactly reverse every removal command.
 - Registry reverts should be documented as best-effort inverse presets, not as backups.
+- `Apply.reg` disables Game DVR capture flags to prevent `ms-gamingoverlay` prompts after Xbox Game Bar has been removed; `Revert.reg` should carry the inverse values.
 - Windows Terminal is the preferred shell host and should remain in the built-in app list with `DefaultRemove = $false`.
 - Do not remove Windows PowerShell 5.1 itself. Hiding/restoring shortcuts, context-menu entries, and Windows Terminal profiles is acceptable; deleting the built-in engine is not.
 
