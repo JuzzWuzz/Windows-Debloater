@@ -191,7 +191,7 @@ The registry actions import presets from `RegFiles`:
 - `Apply.reg` applies preferred personalisation, privacy, Explorer, Windows Update, Copilot, Edge, Start menu, taskbar, and context-menu settings.
 - `Revert.reg` applies inverse/default-style values where practical.
 
-`Apply.reg` also disables Game DVR capture flags to stop `ms-gamingoverlay` prompts after Xbox Game Bar has been removed.
+`Apply.reg` also disables Game DVR capture flags to stop `ms-gamingoverlay` prompts after Xbox Game Bar has been removed, and disables the CDP drag tray.
 
 `Revert.reg` is not a backup of the machine's previous state. It is a best-effort inverse preset.
 
