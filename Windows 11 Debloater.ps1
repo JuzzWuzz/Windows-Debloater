@@ -1219,6 +1219,10 @@ Function InstallPowerShell7 {
             if ($winget) {
                 if (TestPowerShell7Installed) {
                     Write-Host "PowerShell 7 is already installed" -ForegroundColor "Green"
+                    if (!(GetSshServerPowerShell7Path)) {
+                        Write-Host "The installed PowerShell 7 package does not provide the stable machine-wide SSH path" -ForegroundColor Yellow
+                        Write-Host "Windows SSH will continue using Windows PowerShell 5.1" -ForegroundColor Yellow
+                    }
                     if (SetWindowsTerminalPowerShell7ProfileAdmin) {
                         Write-Host "PowerShell 7 Windows Terminal profile set to run as Administrator" -ForegroundColor "Green"
                         $Global:g_HasMadeChanges = $true
@@ -1227,7 +1231,7 @@ Function InstallPowerShell7 {
                     }
                 } else {
                     Write-Host "Installing PowerShell 7..."
-                    $result = InvokeWinget @("install", "--id", "Microsoft.PowerShell", "--exact", "--source", "winget", "--accept-package-agreements", "--accept-source-agreements")
+                    $result = InvokeWinget @("install", "--id", "Microsoft.PowerShell", "--exact", "--source", "winget", "--installer-type", "wix", "--accept-package-agreements", "--accept-source-agreements")
                     if ($result.ExitCode -eq 0) {
                         Write-Host "PowerShell 7 installed" -ForegroundColor "Green"
                         if (SetWindowsTerminalPowerShell7ProfileAdmin) {
@@ -2304,7 +2308,45 @@ Function GetWslKeepAliveTaskName {
     return $("WindowsDebloater WSL $(GetWslDistributionName) Keepalive")
 }
 
+Function StartWslKeepAliveTask {
+    $taskName = GetWslKeepAliveTaskName
+    $task = Get-ScheduledTask -TaskPath "\" -TaskName $taskName -ErrorAction SilentlyContinue
+    if (!$task) {
+        Write-Host "WSL keepalive task was not found" -ForegroundColor Red
+        return $false
+    }
+
+    try {
+        if ($task.State -ne "Running") {
+            Start-ScheduledTask -TaskPath "\" -TaskName $taskName
+        }
+    } catch {
+        Write-Host "Could not start WSL keepalive task" -ForegroundColor Red
+        Write-Host $_.Exception.Message -ForegroundColor Red
+        return $false
+    }
+
+    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+        Start-Sleep -Seconds 1
+        $task = Get-ScheduledTask -TaskPath "\" -TaskName $taskName -ErrorAction SilentlyContinue
+        if ($task -and $task.State -eq "Running") {
+            Write-Host "WSL keepalive task is running" -ForegroundColor "Green"
+            return $true
+        }
+    }
+
+    $taskInfo = Get-ScheduledTaskInfo -TaskPath "\" -TaskName $taskName -ErrorAction SilentlyContinue
+    $lastTaskResult = if ($taskInfo) { $taskInfo.LastTaskResult } else { "unknown" }
+    Write-Host $("WSL keepalive task did not start (last result: $lastTaskResult)") -ForegroundColor Red
+    Write-Host "Inspect the Task Scheduler Operational log for the failure reason" -ForegroundColor Yellow
+    return $false
+}
+
 Function EnsureWslKeepAliveTask {
+    param(
+        [switch] $verifyStart
+    )
+
     $wsl = Get-Command wsl.exe -ErrorAction SilentlyContinue
     if (!$wsl) {
         Write-Host "wsl.exe not found, cannot create WSL keepalive task" -ForegroundColor Red
@@ -2316,7 +2358,7 @@ Function EnsureWslKeepAliveTask {
     $taskArguments = "-d $(GetWslDistributionName) --exec /bin/bash -lc `"exec sleep infinity`""
 
     $action = New-ScheduledTaskAction -Execute $wsl.Source -Argument $taskArguments
-    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $trigger = New-ScheduledTaskTrigger -AtStartup -RandomDelay (New-TimeSpan -Seconds 30)
     $principal = New-ScheduledTaskPrincipal -UserId $taskUser -LogonType S4U -RunLevel Limited
     $settings = New-ScheduledTaskSettingsSet `
         -AllowStartIfOnBatteries `
@@ -2345,6 +2387,10 @@ Function EnsureWslKeepAliveTask {
             Write-Host $("WSL keepalive task updated for $taskUser") -ForegroundColor "Green"
         } else {
             Write-Host $("WSL keepalive task created for $taskUser") -ForegroundColor "Green"
+        }
+
+        if ($verifyStart) {
+            return (StartWslKeepAliveTask)
         }
 
         return $true
@@ -2468,7 +2514,11 @@ Function InstallWsl {
                 }
 
                 if ($wslReady) {
-                    EnsureWslKeepAliveTask | Out-Null
+                    if ($freshInstall) {
+                        EnsureWslKeepAliveTask | Out-Null
+                    } else {
+                        EnsureWslKeepAliveTask -verifyStart | Out-Null
+                    }
                     EnsureWslFirewallRules $selectedFirewallRules | Out-Null
                     if ($freshInstall) {
                         Write-Host "A reboot may be required before WSL is ready" -ForegroundColor Yellow
@@ -2532,7 +2582,7 @@ Function InstallWslKeepAliveTask {
         if ($g_NerfScript) {
             Write-Host "Script is nerfed, skipping"
         } else {
-            EnsureWslKeepAliveTask | Out-Null
+            EnsureWslKeepAliveTask -verifyStart | Out-Null
         }
 
         AwaitKeyPress
@@ -2788,39 +2838,12 @@ Function GetSshServerPowerShell5Path {
 }
 
 Function GetSshServerPowerShell7Path {
-    $shell = "C:\Program Files\PowerShell\7\pwsh.exe"
+    # Only use the stable machine-wide PowerShell 7 installation for OpenSSH.
+    # Microsoft Store/AppX installs live under versioned WindowsApps folders,
+    # so their path becomes invalid after a PowerShell update.
+    $shell = Join-Path $env:ProgramFiles "PowerShell\7\pwsh.exe"
     if (Test-Path -LiteralPath $shell) {
         return $shell
-    }
-
-    try {
-        $package = Get-AppxPackage -Name "Microsoft.PowerShell" -ErrorAction SilentlyContinue |
-            Sort-Object -Property Version -Descending |
-            Select-Object -First 1
-
-        if ($package -and $package.InstallLocation) {
-            $shell = Join-Path $package.InstallLocation "pwsh.exe"
-            if (Test-Path -LiteralPath $shell) {
-                return $shell
-            }
-        }
-    } catch {
-        $null
-    }
-
-    $commands = @(Get-Command pwsh.exe -All -ErrorAction SilentlyContinue | Where-Object { $_.CommandType -eq "Application" })
-    foreach ($command in $commands) {
-        if ([string]::IsNullOrWhiteSpace($command.Source)) {
-            continue
-        }
-
-        if ($command.Source -like "*\AppData\Local\Microsoft\WindowsApps\pwsh.exe") {
-            continue
-        }
-
-        if (Test-Path -LiteralPath $command.Source) {
-            return $command.Source
-        }
     }
 
     return $null
@@ -2831,14 +2854,14 @@ Function ReadSshServerShell {
     $powerShell7Path = GetSshServerPowerShell7Path
 
     if (!$powerShell7Path) {
-        Write-Host "PowerShell 7 was not found, using Windows PowerShell 5.1"
+        Write-Host "No stable machine-wide PowerShell 7 installation was found, using Windows PowerShell 5.1"
         return $powerShell5Path
     }
 
     do {
-        $shellInput = Read-Host -Prompt "PowerShell version for SSH shell [7] (5/7)"
+        $shellInput = Read-Host -Prompt "PowerShell version for SSH shell [5] (5/7)"
         if ([string]::IsNullOrWhiteSpace($shellInput)) {
-            return $powerShell7Path
+            return $powerShell5Path
         }
 
         if ($shellInput -eq "5") {
@@ -3100,6 +3123,16 @@ Function EnsureSshServerAuthorizedKeysFile {
     return $true
 }
 
+Function GetSshServerDefaultShell {
+    $openSshPath = "HKLM:\SOFTWARE\OpenSSH"
+    if (!(Test-Path -LiteralPath $openSshPath)) {
+        return $null
+    }
+
+    $properties = Get-ItemProperty -LiteralPath $openSshPath -ErrorAction SilentlyContinue
+    return $properties.DefaultShell
+}
+
 Function SetSshServerDefaultShell {
     param(
         [Parameter(Position = 0)]
@@ -3109,10 +3142,18 @@ Function SetSshServerDefaultShell {
     New-Item -Path "HKLM:\SOFTWARE\OpenSSH" -Force | Out-Null
 
     if ([string]::IsNullOrWhiteSpace($shell)) {
-        $shell = GetSshServerPowerShell7Path
-        if (!$shell) {
-            $shell = GetSshServerPowerShell5Path
-        }
+        $shell = GetSshServerPowerShell5Path
+    }
+
+    if (!(Test-Path -LiteralPath $shell)) {
+        Write-Host $("Requested SSH shell does not exist: $shell") -ForegroundColor Yellow
+        Write-Host "Falling back to Windows PowerShell 5.1" -ForegroundColor Yellow
+        $shell = GetSshServerPowerShell5Path
+    }
+
+    if (!(Test-Path -LiteralPath $shell)) {
+        Write-Host "Windows PowerShell 5.1 was not found, so the SSH shell was not changed" -ForegroundColor Red
+        return $false
     }
 
     New-ItemProperty `
@@ -3123,6 +3164,18 @@ Function SetSshServerDefaultShell {
         -Force | Out-Null
 
     Write-Host $("SSH Server default shell set to $shell") -ForegroundColor "Green"
+    return $true
+}
+
+Function EnsureSshServerDefaultShell {
+    $shell = GetSshServerDefaultShell
+    if ([string]::IsNullOrWhiteSpace($shell) -or (Test-Path -LiteralPath $shell)) {
+        return $true
+    }
+
+    Write-Host $("Configured SSH shell no longer exists: $shell") -ForegroundColor Yellow
+    Write-Host "Repairing SSH with Windows PowerShell 5.1" -ForegroundColor Yellow
+    return (SetSshServerDefaultShell (GetSshServerPowerShell5Path))
 }
 
 Function RemoveSshServerDefaultShell {
@@ -3195,8 +3248,53 @@ Function RestartSshServer {
             if (!$service) {
                 Write-Host "SSH Server is not installed" -ForegroundColor Red
             } else {
-                Restart-Service -Name sshd
-                Write-Host "SSH Server restarted" -ForegroundColor "Green"
+                if (EnsureSshServerDefaultShell) {
+                    Restart-Service -Name sshd
+                    Write-Host "SSH Server restarted" -ForegroundColor "Green"
+                }
+            }
+        }
+
+        AwaitKeyPress
+    }
+}
+
+Function SetSshServerShellVersion {
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0, Mandatory)]
+        [ValidateSet("5", "7")]
+        [String] $version
+    )
+    Process {
+        $shellLabel = if ($version -eq "5") { "Windows PowerShell 5.1" } else { "PowerShell 7" }
+        PrintBlock $("Set SSH Server Shell: $shellLabel") -isolateBlock $true -clearScreen $true
+
+        if ($g_NerfScript) {
+            Write-Host "Script is nerfed, skipping"
+        } else {
+            $service = Get-Service -Name sshd -ErrorAction SilentlyContinue
+            if (!$service) {
+                Write-Host "SSH Server is not installed" -ForegroundColor Red
+            } else {
+                $shell = if ($version -eq "5") {
+                    GetSshServerPowerShell5Path
+                } else {
+                    GetSshServerPowerShell7Path
+                }
+
+                if (!$shell) {
+                    Write-Host "A stable machine-wide PowerShell 7 installation was not found" -ForegroundColor Red
+                    Write-Host "The Microsoft Store version uses a versioned path and is not safe as the OpenSSH default shell" -ForegroundColor Yellow
+                } elseif (SetSshServerDefaultShell $shell) {
+                    if ($service.Status -eq "Running") {
+                        Restart-Service -Name sshd
+                        Write-Host "SSH Server restarted" -ForegroundColor "Green"
+                    } else {
+                        Write-Host "SSH Server is stopped; the new shell will apply when it starts" -ForegroundColor Yellow
+                    }
+                    $Global:g_HasMadeChanges = $true
+                }
             }
         }
 
@@ -3352,11 +3450,13 @@ $m_WslMenu.AddMenuItem((MenuItem "6" "Restore WSL Linux Shell Context Menus"    
 $m_WslMenu.AddMenuItem((MenuItem "B" "Return to Customisation Menu"             { Break }))
 
 # SSH Server Menu
-$m_SshServerMenu.AddMenuItem((MenuItem "1" "Install SSH Server"             { InstallSshServer }))
-$m_SshServerMenu.AddMenuItem((MenuItem "2" "Open Authorized Keys File"      { OpenSshServerAuthorizedKeysFile }))
-$m_SshServerMenu.AddMenuItem((MenuItem "3" "Restart SSH Server"             { RestartSshServer }))
-$m_SshServerMenu.AddMenuItem((MenuItem "4" "Remove SSH Server"              { RemoveSshServer }))
-$m_SshServerMenu.AddMenuItem((MenuItem "B" "Return to Customisation Menu"   { Break }))
+$m_SshServerMenu.AddMenuItem((MenuItem "1" "Install SSH Server"                  { InstallSshServer }))
+$m_SshServerMenu.AddMenuItem((MenuItem "2" "Open Authorized Keys File"           { OpenSshServerAuthorizedKeysFile }))
+$m_SshServerMenu.AddMenuItem((MenuItem "3" "Use Windows PowerShell 5.1"          { SetSshServerShellVersion "5" }))
+$m_SshServerMenu.AddMenuItem((MenuItem "4" "Use PowerShell 7 (stable install)"   { SetSshServerShellVersion "7" }))
+$m_SshServerMenu.AddMenuItem((MenuItem "5" "Restart SSH Server"                  { RestartSshServer }))
+$m_SshServerMenu.AddMenuItem((MenuItem "6" "Remove SSH Server"                   { RemoveSshServer }))
+$m_SshServerMenu.AddMenuItem((MenuItem "B" "Return to Customisation Menu"        { Break }))
 
 # USB Wake Menu
 $m_UsbMenu.AddMenuItem((MenuItem "1" "List USB Wake Devices"        { ListUsbWakeDevices }))

@@ -32,8 +32,9 @@ Keep the tool practical, explicit, and understandable. It is not intended to be 
 
 ## 💙 PowerShell And Terminal
 
-- PowerShell 7 install/uninstall uses `winget`.
+- PowerShell 7 install/uninstall uses `winget`; installation requests the MSI (`--installer-type wix`) so the machine-wide path is stable.
 - PowerShell 7 install should set Windows Terminal profile GUID `{574e775e-4f2a-5b96-ac1e-a2962a402336}` `elevate` to `true` where Terminal settings are available.
+- PowerShell 7 installation and Windows OpenSSH shell selection are separate actions; installing PowerShell 7 must not silently rewrite the SSH shell.
 - Windows Terminal settings are edited in `settings.json`.
 - The Terminal settings action hides Command Prompt profile GUID `{0caa0dad-35be-5f56-a8ff-afceeeaa6101}` and sets `warning.confirmCloseAllTabs` to `false`.
 - The built-in Windows PowerShell context-menu keys are protected and live at exact `HKEY_CLASSES_ROOT` paths:
@@ -56,6 +57,7 @@ wsl.exe -d Debian --exec /bin/bash -lc "exec sleep infinity"
 ```
 
 - Keepalive task should have no execution time limit.
+- Existing WSL keepalive tasks should be started and verified after registration; report the Task Scheduler result if they do not enter the `Running` state.
 - WSL install prompts for managed firewall rules, all selected by default:
   - `WSL SSH` on TCP `22`
   - `WSL HTTP` on TCP `80`
@@ -71,11 +73,11 @@ wsl.exe -d Debian --exec /bin/bash -lc "exec sleep infinity"
 - Install should add `OpenSSH.Server~~~~0.0.1.0` if needed.
 - Prefer `Add-WindowsCapability`; fall back to `dism.exe` when the cmdlet fails.
 - Install prompts for a port with default `22`.
-- Install prompts for PowerShell `5` or `7` only when PowerShell 7 is detected.
-- PowerShell 7 detection should check:
-  - `C:\Program Files\PowerShell\7\pwsh.exe`
-  - `Get-AppxPackage Microsoft.PowerShell` install location
-  - `Get-Command pwsh.exe -All`, while skipping the per-user WindowsApps alias
+- Install prompts for PowerShell `5` or `7` only when the stable machine-wide PowerShell 7 path exists.
+- The safe SSH default is Windows PowerShell 5.1.
+- SSH Server actions must provide explicit shell selection for Windows PowerShell 5.1 and PowerShell 7.
+- SSH PowerShell 7 selection must only use `C:\Program Files\PowerShell\7\pwsh.exe`; never persist a versioned Microsoft Store/AppX `WindowsApps` path as `DefaultShell`.
+- If the configured `DefaultShell` no longer exists, SSH repair/restart must fall back to Windows PowerShell 5.1.
 - Install should start and stop `sshd` once so Windows can generate the base config before editing it.
 - `sshd_config` should enforce:
   - `Port <selected port>`

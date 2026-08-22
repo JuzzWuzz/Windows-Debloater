@@ -87,7 +87,9 @@ The PowerShell submenu can:
 - Hide Windows PowerShell 5.1 from common UI surfaces
 - Restore Windows PowerShell 5.1 UI entries
 
-The PowerShell 7 install action also sets its Windows Terminal profile to run elevated where Terminal settings are available.
+The PowerShell 7 install action requests the MSI package so it has a stable machine-wide path at `C:\Program Files\PowerShell\7\pwsh.exe`, and also sets its Windows Terminal profile to run elevated where Terminal settings are available.
+
+Installing or uninstalling PowerShell 7 does not silently change the Windows OpenSSH shell. SSH shell selection is managed separately from the SSH Server submenu.
 
 Windows PowerShell 5.1 itself is not uninstalled. It is a built-in Windows component and is left available for compatibility.
 
@@ -116,13 +118,15 @@ vmIdleTimeout=86400000
 
 Existing unrelated `.wslconfig` content is preserved.
 
-The keepalive task runs as the current Windows user at startup:
+The keepalive task runs as the current Windows user at startup, with a short startup delay so WSL has time to become available:
 
 ```text
 wsl.exe -d Debian --exec /bin/bash -lc "exec sleep infinity"
 ```
 
 It is hidden, has no execution time limit, and is intended to keep Debian running in the background for services such as SSH or Docker.
+
+When the task is installed for an existing Debian distribution, the script starts it immediately and verifies that it enters the `Running` state. A newly installed distribution may need its first-launch setup before the task can be validated.
 
 During install, the script also prompts for managed WSL firewall rules. All are selected by default:
 
@@ -144,13 +148,14 @@ It can:
 
 - Install and configure OpenSSH Server
 - Open `%ProgramData%\ssh\administrators_authorized_keys` in Notepad
+- Select Windows PowerShell 5.1 or PowerShell 7 as the SSH shell
 - Restart `sshd`
 - Remove OpenSSH Server
 
 Install prompts for:
 
 - SSH port, defaulting to `22`
-- PowerShell shell version, `5` or `7`, when PowerShell 7 is available
+- PowerShell shell version, `5` or `7`, when a stable machine-wide PowerShell 7 installation is available
 
 The install flow:
 
@@ -166,7 +171,11 @@ The install flow:
 - Creates or updates the stable firewall rule `Windows-SSH-Server`
 - Removes default Windows OpenSSH firewall rules such as `OpenSSH SSH Server (sshd)`
 
-PowerShell 7 detection checks the classic MSI path first, then the Microsoft.PowerShell MSIX package install location, then `Get-Command pwsh.exe -All` while skipping the per-user WindowsApps alias.
+Windows PowerShell 5.1 is the safe default for SSH. The PowerShell 7 SSH option only uses `C:\Program Files\PowerShell\7\pwsh.exe`; versioned Microsoft Store/AppX paths are rejected because they become invalid after PowerShell updates. If a configured shell path disappears, the SSH restart action repairs the setting by falling back to Windows PowerShell 5.1.
+
+Installing PowerShell 7 later does not automatically switch SSH to it. Use `Use PowerShell 7 (stable install)` from the SSH Server submenu when that stable path is available.
+
+If PowerShell 7 is already installed as an MSIX package, the installer leaves it in place and reports that it cannot be used as the stable SSH shell. Windows PowerShell 5.1 remains the SSH default until a machine-wide MSI installation is available.
 
 Remove cleans up the managed firewall rule, removes the OpenSSH default-shell registry value, and removes the OpenSSH Server capability. Existing SSH config and authorized-keys files are left in place.
 
